@@ -19,6 +19,7 @@ coverage.*
 
 # --- 本地运行时数据（绝不入库）---
 /data/
+/.prod/
 *.db
 *.db-wal
 *.db-shm
