@@ -117,7 +117,7 @@
 
 <div class="relative w-full max-w-2xl">
   <div
-    class="flex items-center gap-2 rounded-full bg-fg/10 px-3 py-2 ring-1 ring-fg/15 focus-within:ring-2 focus-within:ring-accent-500"
+    class="flex items-center gap-2 rounded-full bg-glass px-3 py-2 ring-1 ring-glass-ring focus-within:ring-2 focus-within:ring-accent-500"
   >
     <button
       type="button"

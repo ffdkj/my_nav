@@ -14,7 +14,7 @@
       type="button"
       onclick={() => board.selectPage(p.id)}
       class="size-2.5 cursor-pointer rounded-full transition
-             {p.id === board.page?.id ? 'scale-125 bg-fg' : 'bg-fg/30 hover:bg-fg/60'}"
+             {p.id === board.page?.id ? 'scale-125 bg-dot' : 'bg-dot-idle hover:bg-dot'}"
       aria-label="切换到 {p.name}"
       aria-current={p.id === board.page?.id}
       title={p.name}

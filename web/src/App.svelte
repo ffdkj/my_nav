@@ -13,11 +13,12 @@
   import WallpaperLayer from '$lib/components/WallpaperLayer.svelte'
   import Toasts from '$lib/components/Toasts.svelte'
   import { api } from '$lib/api'
+  import { tileShape } from '$lib/shape'
   import { board } from '$lib/store/board.svelte'
   import { pwa } from '$lib/store/pwa.svelte'
   import { theme } from '$lib/store/theme.svelte'
   import { ui } from '$lib/store/ui.svelte'
-  import type { Item, Link } from '$lib/types'
+  import type { IconChoice, Item, Link } from '$lib/types'
 
   let dialogOpen = $state(false)
   let editing = $state<Link | null>(null)
@@ -49,6 +50,16 @@
     theme.apply()
   })
 
+  // 图块形状：设置 → CSS 变量（`--radius-tile` / `--radius-tile-lg`）。
+  // 内联在 <html> 上，覆盖 app.css 里 @theme 给的默认值；图块/文件夹/拖拽幽灵
+  // 全部读这两个变量，所以这里改一处就够。
+  $effect(() => {
+    const s = tileShape(board.settings['tile_shape'])
+    const style = document.documentElement.style
+    style.setProperty('--radius-tile', s.tile)
+    style.setProperty('--radius-tile-lg', s.big)
+  })
+
   // 换页前抓一份当前网格的 DOM 快照（board.selectPage 在数据换掉之前调用它）。
   // 克隆的是舞台**里面**那层，避免把 data-testid="page-stage" 也复制一份出来。
   $effect(() => {
@@ -76,18 +87,29 @@
     ghostHost.replaceChildren(...(t.ghost ? [t.ghost] : []))
   })
 
-  /** 出场快照：从 0 平移到屏幕外（方向与入场相反） */
+  /**
+   * 出场快照：从 0 平移到屏幕外（方向与入场相反）。
+   * 用 translate3d 而不是 translateX：强制提到合成层，避免动画期间重新栅格化。
+   */
   const ghostStyle = $derived.by(() => {
     const t = board.transition
     if (!t) return 'display: none'
-    return `transform: translateX(${board.animating ? -t.dir * 100 : 0}%); transition: transform var(--page-slide-ms) var(--page-slide-ease);`
+    const pct = board.animating ? -t.dir * 100 : 0
+    return `transform: translate3d(${pct}%, 0, 0); transition: transform var(--page-slide-ms) var(--page-slide-ease); will-change: transform;`
   })
 
   /** 入场网格：从屏幕外平移到 0 */
   const stageStyle = $derived.by(() => {
     const t = board.transition
     if (!t) return ''
-    return `transform: translateX(${board.animating ? 0 : t.dir * 100}%); transition: transform var(--page-slide-ms) var(--page-slide-ease);`
+    const pct = board.animating ? 0 : t.dir * 100
+    return `transform: translate3d(${pct}%, 0, 0); transition: transform var(--page-slide-ms) var(--page-slide-ease); will-change: transform;`
+  })
+
+  // 动画期间在 <html> 上挂标记：app.css 靠它临时关掉玻璃面的 backdrop-filter
+  // （移动层上每帧重算模糊是掉帧主因）。animating 一翻真就挂上，收尾时自动摘掉。
+  $effect(() => {
+    document.documentElement.dataset.pageSliding = board.animating ? '1' : ''
   })
 
   // ---------- 翻页 ----------
@@ -158,7 +180,7 @@
     dialogOpen = true
   }
 
-  async function submitDialog(url: string, title: string) {
+  async function submitDialog(url: string, title: string, icon: IconChoice | null) {
     dialogOpen = false
     if (editing) {
       const target = editing
@@ -169,9 +191,30 @@
       } catch (err) {
         ui.error('保存失败：' + (err instanceof Error ? err.message : String(err)))
         await board.reload()
+        return
       }
+      await applyIcon(id, icon)
     } else {
-      await board.addLink(url, title)
+      // 新增：先建链接（服务端会同步抓一次标准 favicon），
+      // 再把用户在对话框里选中的那张覆盖上去（Q11 决策 a）
+      const id = await board.addLink(url, title)
+      if (id) await applyIcon(id, icon)
+    }
+  }
+
+  /** 把对话框里选的图标落到某个已存在的链接上（null = 保持现状） */
+  async function applyIcon(linkId: string, icon: IconChoice | null) {
+    if (!icon) return
+    switch (icon.kind) {
+      case 'candidate':
+        await board.pickIcon(linkId, icon.candidate)
+        break
+      case 'monogram':
+        await board.applyMonogram(linkId, icon.text, icon.color, icon.fontSize)
+        break
+      case 'upload':
+        await board.uploadIcon(linkId, icon.file)
+        break
     }
   }
 
@@ -212,7 +255,7 @@
       </div>
       <button
         type="button"
-        class="shrink-0 cursor-pointer rounded-full bg-fg/10 p-2 ring-1 ring-fg/15 hover:bg-fg/20"
+        class="shrink-0 cursor-pointer rounded-full bg-glass p-2 ring-1 ring-glass-ring hover:bg-glass-hover"
         aria-label={theme.dark ? '切换到浅色主题' : '切换到深色主题'}
         data-testid="theme-toggle"
         onclick={() => theme.toggle()}
@@ -221,7 +264,7 @@
       </button>
       <button
         type="button"
-        class="shrink-0 cursor-pointer rounded-full bg-fg/10 p-2 ring-1 ring-fg/15 hover:bg-fg/20"
+        class="shrink-0 cursor-pointer rounded-full bg-glass p-2 ring-1 ring-glass-ring hover:bg-glass-hover"
         aria-label="打开设置"
         onclick={() => (settingsOpen = true)}
       >

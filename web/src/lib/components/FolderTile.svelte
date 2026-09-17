@@ -20,8 +20,8 @@
   <button
     type="button"
     onclick={onopen}
-    class="size-full cursor-pointer rounded-[var(--radius-tile)] bg-fg/10 p-1.5 ring-1 ring-fg/15 backdrop-blur-sm transition
-           hover:bg-fg/20 hover:ring-fg/30 focus-visible:ring-3 focus-visible:ring-accent-500 focus-visible:outline-none"
+    class="size-full cursor-pointer rounded-[var(--radius-tile)] bg-glass p-1.5 ring-1 ring-glass-ring frosted transition
+           hover:bg-glass-hover hover:ring-fg/30 focus-visible:ring-3 focus-visible:ring-accent-500 focus-visible:outline-none"
     aria-label="打开 {label}"
     aria-haspopup="dialog"
     title={label}

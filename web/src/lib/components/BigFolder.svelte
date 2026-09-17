@@ -20,7 +20,7 @@
   管理（拖拽/删除）走 hover 编辑按钮 —— 桌面端；触屏的长按菜单在 M4 与「移动到…」一起做。
 -->
 <div
-  class="relative flex size-full flex-col rounded-[var(--radius-tile)] bg-fg/[0.07] p-2 ring-1 ring-fg/15 backdrop-blur-sm"
+  class="relative flex size-full flex-col rounded-[var(--radius-tile-lg)] bg-glass p-2 ring-1 ring-glass-ring frosted"
   aria-label={label}
 >
   <span class="grid flex-1 grid-cols-3 grid-rows-3 gap-1 text-[0.55rem]">

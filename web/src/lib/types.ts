@@ -30,7 +30,50 @@ export interface Link {
   mono_text: string | null
   mono_color: string
   mono_font_size: number
+  /** 下面几个是图标候选功能带来的元数据：尺寸用来决定"该不该放大"，
+   *  icon_picked_url 非空表示这张图是用户手选的（来自 remote_url）。 */
+  icon_mime: string | null
+  icon_w: number | null
+  icon_h: number | null
+  icon_picked_url: string | null
 }
+
+/** 候选图标的来源标签（对应 internal/favicon/candidates.go 的 Candidate.Source） */
+export type IconCandidateSource =
+  | 'apple-touch-icon'
+  | 'link-icon'
+  | 'mask-icon'
+  | 'manifest'
+  | 'favicon-ico'
+  | 'google'
+  | 'duckduckgo'
+
+/** 候选图标：字节已经存在服务端（icon_path 直接可当 <img src>），选中只需回传路径 */
+export interface IconCandidate {
+  icon_path: string
+  source: IconCandidateSource
+  mime: string
+  width: number
+  height: number
+  /** true = 透明底；false = 不透明；null = 判不了（SVG / ICO） */
+  alpha: boolean | null
+  bytes: number
+  remote_url: string
+}
+
+export interface IconCandidates {
+  url: string
+  candidates: IconCandidate[]
+}
+
+/**
+ * 对话框里"用户挑了什么"的三选一（null = 不动图标，沿用现状）。
+ * 新增链接时先创建、再把这个选择应用上去（见 App.svelte 的 submitDialog）。
+ */
+export type IconChoice =
+  | { kind: 'candidate'; candidate: IconCandidate }
+  | { kind: 'monogram'; text: string; color: string; fontSize: number }
+  | { kind: 'upload'; file: File }
 
 export interface Folder {
   id: Id

@@ -84,7 +84,9 @@ async function armSampler() {
       ghostVisible: false,
       ghostItems: 0,
       track: false,
+      trackFirst: '',
       trackInline: '',
+      slidingFrames: 0,
       maxShift: 0,
       fixedMoved: false,
     }
@@ -98,9 +100,11 @@ async function armSampler() {
       const inline = stage.style.transform
       if (inline) {
         trace.styledFrames++
-        const pct = /translateX\((-?[\d.]+)%\)/.exec(inline)
+        // 平移用 translate3d（强制合成层），所以正则也要跟着换
+        const pct = /translate3d\((-?[\d.]+)%/.exec(inline)
         if (pct && !trace.startPct) trace.startPct = parseFloat(pct[1])
-        if (inline.includes('translateX(0%)')) trace.sawEnd = true
+        if (/translate3d\(0%/.test(inline)) trace.sawEnd = true
+        if (document.documentElement.dataset.pageSliding === '1') trace.slidingFrames++
         if (!trace.transitionDur) {
           const cs = getComputedStyle(stage)
           trace.transitionProp = cs.transitionProperty
@@ -126,6 +130,8 @@ async function armSampler() {
       const track = document.querySelector('[data-testid="wallpaper-track"]')
       if (track) {
         trace.track = true
+        // 首帧也要记：壁纸层"往哪边平移"完全取决于起点/终点这一对值
+        if (!trace.trackFirst) trace.trackFirst = track.style.transform
         trace.trackInline = track.style.transform
       }
       fixed.forEach((el, i) => {
@@ -331,9 +337,14 @@ try {
   )
   check('换页时旧的网格快照出现（旧页滑出去）', tr.ghostVisible && tr.ghostItems > 0, JSON.stringify(tr))
   check(
-    '壁纸不同 → 壁纸层也挂上平移（轨道 -50%）',
-    tr.track === true && tr.trackInline.includes('-50%'),
-    `track=${tr.track} inline="${tr.trackInline}"`,
+    '壁纸不同 → 壁纸层也平移，方向与图标一致（上一页：轨道 -50% → 0，整体向右）',
+    tr.track === true && tr.trackFirst.includes('-50%') && tr.trackInline.includes('0%'),
+    `track=${tr.track} first="${tr.trackFirst}" last="${tr.trackInline}"`,
+  )
+  check(
+    '动画期间 <html data-page-sliding> 挂上（用来临时关掉玻璃面的模糊）',
+    tr.slidingFrames > 0,
+    `slidingFrames=${tr.slidingFrames}`,
   )
   check('固定 UI（标题与主题按钮）不参与平移', tr.fixedMoved === false)
   const settled = await page.evaluate(() => {
@@ -356,7 +367,16 @@ try {
   )
   check('回到 Home 后仍是本页那张壁纸', (await wallpaperSrc())?.includes(W2.file), await wallpaperSrc())
 
-  // 反向翻一页只为留一张动画中间态截图（采样跑完了，不会互相干扰）
+  // 反向再翻一页：Home → Work（下一页方向），此刻两页壁纸仍然不同（W2 vs 全局 W1），
+  // 正好用来验证壁纸层"另一个方向"是真的反向 —— 这正是之前两个方向都往左的回归点。
+  await page.waitForTimeout(200)
+  tr = await flipTo(1)
+  check(
+    '下一页且壁纸不同 → 轨道 0% → -50%（与上一页方向相反）',
+    tr.track === true && tr.trackFirst.includes('0%') && tr.trackInline.includes('-50%'),
+    `track=${tr.track} first="${tr.trackFirst}" last="${tr.trackInline}"`,
+  )
+  check('图标层方向与之相反（起点 +100%）', tr.startPct === 100, `startPct=${tr.startPct}`)
   await page.locator('nav[aria-label="页面"] button').nth(1).click()
   await page.waitForTimeout(90)
   await page.screenshot({ path: 'e2e/shot-m10-02-slide.png' })
@@ -388,6 +408,71 @@ try {
     `styled=${tr.styledFrames} startPct=${tr.startPct} 过渡=${tr.animProp}@${Math.round(tr.animMaxTime)}ms 实测位移=${tr.maxShift.toFixed(0)}px`,
   )
   check('壁纸一致 → 壁纸层完全不平移', tr.track === false && tr.ghostVisible)
+
+  // ---------- 10) 蒙版与玻璃：白天不压白蒙版，改由白色玻璃保证可读 ----------
+  // 此时在 Work，壁纸是 W2（两页都指向它）。
+  // 用头部的主题按钮切换（设置面板的 tab 会停在上次打开的「壁纸」上，用 select 得先切 tab）
+  await page.locator('[data-testid="theme-toggle"]').click()
+  await page.waitForTimeout(500)
+  check('主题按钮切到白天并写入服务端', (await settings()).theme === 'light', (await settings()).theme)
+
+  const lightLook = await page.evaluate(() => {
+    const tile = document.querySelector('[data-testid="tile-link"], [data-testid="folder-tile"]')
+    const bar = document.querySelector('input[aria-label="搜索"]')?.closest('div')
+    const dot = document.querySelector('nav[aria-label="页面"] button')
+    const root = getComputedStyle(document.documentElement)
+    return {
+      photo: document.documentElement.dataset.photo,
+      scrim: Boolean(document.querySelector('[data-testid="wallpaper-scrim"]')),
+      tileBg: tile ? getComputedStyle(tile).backgroundColor : null,
+      barBg: bar ? getComputedStyle(bar).backgroundColor : null,
+      dotBg: dot ? getComputedStyle(dot).backgroundColor : null,
+      slideMs: root.getPropertyValue('--page-slide-ms').trim(),
+      wallpaper: document.querySelector('[data-testid="wallpaper"]')?.getAttribute('src') ?? null,
+    }
+  })
+  check(
+    '白天有壁纸时不再压白蒙版（照片本色显示）',
+    lightLook.scrim === false && Boolean(lightLook.wallpaper),
+    JSON.stringify(lightLook),
+  )
+  check(
+    '有照片的标记挂在 <html> 上，玻璃面翻成白色半透明（深色文字仍可读）',
+    lightLook.photo === '1' &&
+      lightLook.barBg === 'rgba(255, 255, 255, 0.55)' &&
+      lightLook.dotBg === 'rgba(255, 255, 255, 0.6)' &&
+      // 这个用例里没有链接图块，有的话必须是同一档白玻璃
+      (lightLook.tileBg === null || lightLook.tileBg === 'rgba(255, 255, 255, 0.55)'),
+    JSON.stringify(lightLook),
+  )
+  check(
+    '动画时长 300ms（比以前更从容）',
+    // 压缩后的 CSS 会把它写成 `.3s`（历史上这里就被 260ms → `.26s` 坑过一次）
+    ['.3s', '0.3s', '300ms'].includes(lightLook.slideMs),
+    `--page-slide-ms=${lightLook.slideMs}`,
+  )
+
+  // 切回深色：蒙版该回来（照片上压黑才读得清）
+  await page.locator('[data-testid="theme-toggle"]').click()
+  await page.waitForTimeout(500)
+  const darkLook = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="wallpaper-scrim"]')
+    const bar = document.querySelector('input[aria-label="搜索"]')?.closest('div')
+    return {
+      scrim: Boolean(el),
+      scrimImage: el ? getComputedStyle(el).backgroundImage.slice(0, 30) : null,
+      barBg: bar ? getComputedStyle(bar).backgroundColor : null,
+      photo: document.documentElement.dataset.photo,
+    }
+  })
+  check(
+    '深色有照片时压黑蒙版仍在，玻璃回到深色淡染',
+    darkLook.scrim === true &&
+      darkLook.scrimImage?.includes('linear-gradient') &&
+      darkLook.barBg === 'rgba(229, 237, 255, 0.1)' &&
+      darkLook.photo === '1',
+    JSON.stringify(darkLook),
+  )
 
   check('浏览器控制台无 error', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '))
 } catch (err) {

@@ -87,6 +87,32 @@ try {
 
   // ---- 4) 轮换 ----
   await dialog.getByRole('tab', { name: '外观' }).click()
+
+  // ---- 图块形状预设（全局设置 → CSS 变量）----
+  await dialog.getByTestId('tile-shape-select').selectOption('circle')
+  await page.waitForTimeout(400)
+  const shape = await page.evaluate(() => ({
+    variable: getComputedStyle(document.documentElement).getPropertyValue('--radius-tile').trim(),
+    big: getComputedStyle(document.documentElement).getPropertyValue('--radius-tile-lg').trim(),
+  }))
+  check(
+    '圆形预设写进 --radius-tile（大文件块单独一档，避免 2×2 变正圆切内容）',
+    shape.variable === '50%' && shape.big === '26%',
+    JSON.stringify(shape),
+  )
+  check('形状写入服务端设置', (await settings()).tile_shape === 'circle', (await settings()).tile_shape)
+  await dialog.getByTestId('tile-shape-select').selectOption('squircle')
+  await page.waitForTimeout(300)
+  check(
+    '换成超椭圆',
+    (await settings()).tile_shape === 'squircle' &&
+      (await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--radius-tile').trim(),
+      )) === '22%',
+  )
+  await dialog.getByTestId('tile-shape-select').selectOption('rounded')
+  await page.waitForTimeout(300)
+
   await dialog.getByLabel('轮换').selectOption('load')
   await page.waitForTimeout(600)
   const rotated = await settings()

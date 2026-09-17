@@ -23,7 +23,16 @@
   --color-surface-700: var(--c-surface-700);
   --color-fg: var(--c-fg);
   --color-accent-500: #3b82f6;
+  /* 玻璃面：压在壁纸上的固定 UI（图块 / 搜索栏 / 头部按钮）与页码圆点。
+     它们只有"主题 × 画面里有没有照片"两个维度，所以各给一个 token，
+     组件里仍然只写类名，不写 dark: 变体。 */
+  --color-glass: var(--c-glass);
+  --color-glass-hover: var(--c-glass-hover);
+  --color-glass-ring: var(--c-glass-ring);
+  --color-dot: var(--c-dot);
+  --color-dot-idle: var(--c-dot-idle);
   --radius-tile: 1rem;
+  --radius-tile-lg: 1rem;
 }
 
 /* 浅色（默认）：前景近黑、面板纯白、底色浅灰蓝 */
@@ -32,18 +41,32 @@
   --c-surface-800: #ffffff;
   --c-surface-700: #e2e7f2;
   --c-fg: #0b1220;
-  /* 壁纸上的蒙版：浅色下压白（保证深色图标文字可读），深色下压黑 */
-  --wallpaper-scrim: linear-gradient(
-    to bottom,
-    rgb(255 255 255 / 0.62),
-    rgb(255 255 255 / 0.48),
-    rgb(255 255 255 / 0.75)
-  );
+
+  /* 无照片时的玻璃：深色 10% 淡染（原来的 bg-fg/10） */
+  --c-glass: rgb(11 18 32 / 0.1);
+  --c-glass-hover: rgb(11 18 32 / 0.18);
+  --c-glass-ring: rgb(11 18 32 / 0.15);
+  --c-dot: #0b1220;
+  --c-dot-idle: rgb(11 18 32 / 0.3);
 
   /* 图块尺寸：桌面 / 平板 / 手机 三档，网格列数 = min(12, floor(可用宽 / (tile + gap))) */
   --tile: 6rem;
   --gap: 1rem;
   color-scheme: light;
+}
+
+/*
+  浅色 + 画面里真有照片：**不压任何蒙版**（用户的原话是白天那层白蒙版"太怪了"），
+  改为把玻璃面翻成白色半透明 —— 浅色主题的文字/图标是近黑的，
+  压在照片上本来就得靠"更亮的底"来保证对比度，而白蒙版会把壁纸整张洗掉。
+  页脚圆点同理（默认是近黑的，压在深色照片上会消失）。
+*/
+:root[data-photo='1']:not(.dark) {
+  --c-glass: rgb(255 255 255 / 0.55);
+  --c-glass-hover: rgb(255 255 255 / 0.72);
+  --c-glass-ring: rgb(255 255 255 / 0.7);
+  --c-dot: #ffffff;
+  --c-dot-idle: rgb(255 255 255 / 0.6);
 }
 
 /* 深色：前景近白、面板深蓝、底色近黑 */
@@ -52,6 +75,12 @@
   --c-surface-800: #0d1424;
   --c-surface-700: #16203a;
   --c-fg: #e5edff;
+  --c-glass: rgb(229 237 255 / 0.1);
+  --c-glass-hover: rgb(229 237 255 / 0.18);
+  --c-glass-ring: rgb(229 237 255 / 0.15);
+  --c-dot: #e5edff;
+  --c-dot-idle: rgb(229 237 255 / 0.3);
+  /* 深色下照片上压黑渐变（保留；浅色下面已经没有蒙版了） */
   --wallpaper-scrim: linear-gradient(
     to bottom,
     rgb(0 0 0 / 0.45),
@@ -104,11 +133,27 @@ body {
 /*
   换页平移动画：图标层与壁纸层共用的时长/缓动。
   时长写在这里（而不是 JS）是为了让 prefers-reduced-motion 能一次性废掉它，
-  同时 JS 侧只读 TRANSITION_MS 用于收尾定时（见 board.svelte.ts）。
+  同时 JS 侧只读它用于收尾定时（见 board.svelte.ts）。
+
+  300ms + iOS 那种"起步快、收尾稳"的缓动（同 UIScrollView 的手感）。
 */
 :root {
-  --page-slide-ms: 260ms;
-  --page-slide-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --page-slide-ms: 300ms;
+  --page-slide-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/*
+  玻璃面（图块 / 文件夹 / 搜索栏…）的模糊。
+  只在动画期间关掉：transform 跑在合成器线程上，而 backdrop-filter 每一帧都要
+  按新的位置重算模糊，实测这是掉帧（34–38ms 的长帧）的主因。
+  静止时照常模糊，所以视觉上只在滑动那 300ms 里"变清晰"。
+*/
+.frosted {
+  backdrop-filter: blur(4px);
+}
+
+html[data-page-sliding] .frosted {
+  backdrop-filter: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

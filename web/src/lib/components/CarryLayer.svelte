@@ -47,7 +47,7 @@
 
 {#if carried}
   <div
-    class="pointer-events-none fixed z-[70] flex size-[var(--tile)] items-center justify-center rounded-[var(--radius-tile)] bg-fg/20 opacity-90 ring-2 ring-accent-500 backdrop-blur"
+    class="pointer-events-none fixed z-[70] flex size-[var(--tile)] items-center justify-center rounded-[var(--radius-tile)] bg-glass-hover opacity-90 ring-2 ring-accent-500 frosted"
     style="left: {pos.x - 32}px; top: {pos.y - 32}px;"
     aria-hidden="true"
   >

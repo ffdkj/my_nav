@@ -9,6 +9,7 @@ import type {
   Bootstrap,
   Child,
   Folder,
+  IconCandidate,
   Item,
   Link,
   Page,
@@ -196,9 +197,10 @@ class BoardStore {
 
   // ---------- 基础变更 ----------
 
-  async addLink(url: string, title: string) {
+  /** 新增链接，返回新建的 link id（对话框要拿它去应用用户选中的候选图标）。 */
+  async addLink(url: string, title: string): Promise<string | undefined> {
     const trimmed = url.trim()
-    if (!trimmed) return
+    if (!trimmed) return undefined
     const linkId = uuidv7()
     const itemId = uuidv7()
     this.links[linkId] = {
@@ -212,10 +214,94 @@ class BoardStore {
       mono_text: null,
       mono_color: monogramColor(trimmed),
       mono_font_size: 30,
+      icon_mime: null,
+      icon_w: null,
+      icon_h: null,
+      icon_picked_url: null,
     }
     this.#newLinks.add(linkId)
     this.sequence = [...this.sequence, { id: itemId, kind: 'link', link_id: linkId, size: 1, children: [] }]
     await this.commit()
+    return linkId
+  }
+
+  /**
+   * 采用用户在候选里选中的那张图标。
+   *
+   * 候选的字节早已由服务端存进内容寻址仓库（/api/icons/candidates），
+   * 所以这里只回传路径与来源地址；服务端会重新 Inspect 一次再落库。
+   */
+  async pickIcon(linkId: string, candidate: IconCandidate) {
+    const current = this.links[linkId]
+    if (!current) return
+    this.status = 'saving'
+    try {
+      const updated = await api.post<Link>(`/api/links/${linkId}/icon/pick`, {
+        icon_path: candidate.icon_path,
+        remote_url: candidate.remote_url,
+      })
+      this.links[linkId] = updated
+      ui.success('已应用所选图标')
+    } catch (err) {
+      this.lastError = err instanceof Error ? err.message : String(err)
+      ui.error('应用图标失败：' + this.lastError)
+    } finally {
+      this.status = 'idle'
+    }
+  }
+
+  /** 纯色文字图标（用户明确选的那一档，改 URL 不会被清掉）。 */
+  async applyMonogram(linkId: string, text: string, color: string, fontSize: number) {
+    await this.#iconPost(linkId, `/api/links/${linkId}/icon/monogram`, {
+      text,
+      color,
+      font_size: fontSize,
+    }, '已切换为纯色文字图标')
+  }
+
+  /** 本地图标上传（服务端会归一化到 ≤256px）。 */
+  async uploadIcon(linkId: string, file: File) {
+    const form = new FormData()
+    form.append('file', file)
+    await this.#iconUpload(linkId, form)
+  }
+
+  /** 重新抓取（用户主动要重抓 → 会覆盖手选的那张）。 */
+  async refetchIcon(linkId: string) {
+    await this.#iconPost(linkId, `/api/links/${linkId}/icon/refetch`, undefined, '已重新抓取')
+  }
+
+  /** 回到标准 favicon 并重抓。 */
+  async resetIcon(linkId: string) {
+    await this.#iconPost(linkId, `/api/links/${linkId}/icon/reset`, undefined, '已重置为标准 favicon')
+  }
+
+  async #iconPost(linkId: string, path: string, body: unknown, okMessage: string) {
+    this.status = 'saving'
+    try {
+      const updated = await api.post<Link>(path, body)
+      this.links[linkId] = updated
+      ui.success(okMessage)
+    } catch (err) {
+      this.lastError = err instanceof Error ? err.message : String(err)
+      ui.error('图标操作失败：' + this.lastError)
+    } finally {
+      this.status = 'idle'
+    }
+  }
+
+  async #iconUpload(linkId: string, form: FormData) {
+    this.status = 'saving'
+    try {
+      const updated = await api.upload<Link>(`/api/links/${linkId}/icon/upload`, form)
+      this.links[linkId] = updated
+      ui.success('已上传本地图标')
+    } catch (err) {
+      this.lastError = err instanceof Error ? err.message : String(err)
+      ui.error('上传失败：' + this.lastError)
+    } finally {
+      this.status = 'idle'
+    }
   }
 
   async removeItem(itemId: string) {
@@ -741,6 +827,12 @@ class BoardStore {
         mono_text: remote.mono_text,
         mono_color: remote.mono_color,
         mono_font_size: remote.mono_font_size,
+        // 候选功能新增的元数据也要跟着回来：图块要按 icon_w 决定要不要放大、
+        // 对话框要显示"手选"标记
+        icon_mime: remote.icon_mime,
+        icon_w: remote.icon_w,
+        icon_h: remote.icon_h,
+        icon_picked_url: remote.icon_picked_url,
       }
     }
 

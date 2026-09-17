@@ -3,6 +3,7 @@
   import { theme, type ThemeMode } from '$lib/store/theme.svelte'
   import { ui } from '$lib/store/ui.svelte'
   import { DEFAULT_FALLBACK_COLOR, wallpaperThumb } from '$lib/wallpaper'
+  import { DEFAULT_TILE_SHAPE, TILE_SHAPES } from '$lib/shape'
   import { uuidv7 } from '$lib/id'
   import type { SearchEngine } from '$lib/types'
 
@@ -186,6 +187,24 @@
                 <option value="dark">深色</option>
                 <option value="light">浅色</option>
                 <option value="auto">跟随系统</option>
+              </select>
+            </label>
+
+            <label class="flex items-center justify-between gap-4">
+              <span>
+                图块形状
+                <span class="text-xs text-fg/40">（图标会撑满整块，文字悬停时浮出）</span>
+              </span>
+              <select
+                value={board.settings['tile_shape'] ?? DEFAULT_TILE_SHAPE}
+                onchange={(e) => board.saveSetting('tile_shape', e.currentTarget.value)}
+                class="rounded-lg bg-fg/10 px-3 py-1.5 ring-1 ring-fg/15"
+                aria-label="图块形状"
+                data-testid="tile-shape-select"
+              >
+                {#each TILE_SHAPES as s (s.id)}
+                  <option value={s.id}>{s.label}</option>
+                {/each}
               </select>
             </label>
 

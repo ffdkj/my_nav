@@ -25,6 +25,14 @@
   })
 
   const highlight = $derived(mergeArmed ? 'scale-105 ring-3 ring-accent-500' : '')
+
+  /**
+   * 图标撑满图块（Q4）。
+   * 唯一例外是**小尺寸位图**：16/32px 的 favicon 硬拉到 96px 只会变成一团糊，
+   * 所以按原始边长缩到六成。SVG / ICO 的 icon_w 是 0（尺寸未知，但矢量或含多尺寸），
+   * 一律按"能撑满"处理。
+   */
+  const iconFill = $derived(link?.icon_w && link.icon_w < 64 ? '60%' : '100%')
 </script>
 
 <div class="size-full transition {highlight}">
@@ -41,24 +49,43 @@
       rel="noreferrer noopener"
       draggable="false"
       style="-webkit-user-drag:none"
-      class="flex size-[var(--tile)] flex-col items-center justify-center gap-1 overflow-hidden
-             rounded-[var(--radius-tile)] bg-fg/10 ring-1 ring-fg/15 backdrop-blur-sm transition
-             hover:bg-fg/20 hover:ring-fg/30 focus-visible:ring-3 focus-visible:ring-accent-500 focus-visible:outline-none"
+      class="@container relative flex size-[var(--tile)] items-center justify-center overflow-hidden
+             rounded-[var(--radius-tile)] bg-glass ring-1 ring-glass-ring frosted transition
+             hover:bg-glass-hover hover:ring-fg/30 focus-visible:ring-3 focus-visible:ring-accent-500 focus-visible:outline-none"
       aria-label={link.title || host}
       title={link.url}
+      data-testid="tile-link"
     >
       {#if link.icon_status === 'ok' && link.icon_path}
-        <img src="/icons/{link.icon_path}" alt="" class="size-8 object-contain" loading="lazy" />
+        <img
+          src="/icons/{link.icon_path}"
+          alt=""
+          class="object-contain"
+          style="width:{iconFill};height:{iconFill}"
+          loading="lazy"
+          data-testid="tile-icon"
+        />
       {:else}
-        <!-- 兜底：纯色文字图标（M5 抓到真图标后由服务端替换） -->
+        <!-- 兜底：纯色文字图标（服务端抓到真图标后由 replace 掉）—— 铺满整块，字母居中 -->
         <span
-          class="flex size-8 items-center justify-center rounded-full text-sm font-semibold text-white"
+          class="flex size-full items-center justify-center font-semibold text-white"
           style="background:{link.mono_color}"
+          data-testid="tile-monogram"
         >
-          {initialOf(link)}
+          <span class="text-[42cqw] leading-none">{initialOf(link)}</span>
         </span>
       {/if}
-      <span class="max-w-[90%] truncate text-[11px] leading-none text-fg/85">
+
+      <!--
+        文字不再常驻：图标要撑满容器。悬停/键盘聚焦时从底部浮出一条渐变压条，
+        深底白字在两种主题下都成立（图块里可能是任意颜色的 logo）。
+      -->
+      <span
+        class="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent
+               px-1.5 pt-4 pb-1 text-center text-[11px] leading-tight text-white opacity-0 transition-opacity duration-150
+               group-hover:opacity-100 group-focus-within:opacity-100"
+        data-testid="tile-label"
+      >
         {link.title || host}
       </span>
     </a>
