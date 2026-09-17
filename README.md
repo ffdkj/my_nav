@@ -44,95 +44,28 @@ make build      # 前端产物 → internal/web/dist → go:embed → bin/nav
 
 ## 部署（armbian 主机 / 1Panel）
 
-项目目录约定：`/opt/1panel/docker/compose/my_nav/`
+**完整清单见 [`docs/deploy.md`](docs/deploy.md)**（含部署前必验三项、验收清单、升级回滚、
+备份恢复、故障排查）。最短路径：
 
 ```bash
-cd /opt/1panel/docker/compose/my_nav
-cp deploy/.env.example .env      # 按需改 NAV_BIND_IP / NAV_PORT
-docker compose up -d             # 或 1Panel 界面导入本 compose
+curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.1.0/deploy/install.sh -o /tmp/my_nav-install.sh
+sudo bash /tmp/my_nav-install.sh
 ```
+
+脚本幂等：建目录（`/opt/1panel/docker/compose/my_nav`，与这台机器上其他 compose 项目一致）、
+下载 compose、写 `.env`（已存在则不动）、拉镜像、启动、等健康检查、打印访问地址。
 
 访问：`http://100.70.0.29:8090`（或 `http://armbian-1.tailbae726.ts.net:8090`）
 
-### 部署前必验三项（MCP 无 shell 通道，需在宿主机执行）
+### 镜像标签
 
-```bash
-docker compose version                      # 需要 v2 子命令；只有独立 docker-compose 也可
-tailscale status --json | grep CertDomains  # 是否已启用 HTTPS 证书
-curl -sI https://t2.gstatic.com/faviconV2   # 语义：出网可达（任意非 000 状态码即可）
-```
+| 标签 | 含义 |
+|---|---|
+| `0.1.0` / `0.1` | 固定版本（compose 默认用这个） |
+| `latest` | 最新发布版 |
+| `edge` | main 分支最新构建 |
 
-### 可选：拿到 HTTPS（这样 PWA 才能安装）
-
-浏览器只在**安全上下文**里注册 Service Worker。当前 `http://IP:端口` 方式下 PWA 不可用。
-想要 `https://` 而不改动现有 Caddy（它已占用 80/443）：
-
-```bash
-# 1) .env 里把绑定改成 NAV_BIND_IP=127.0.0.1
-docker compose up -d
-# 2) 宿主机执行一次（证书由 Tailscale 自动签发）
-sudo tailscale serve --bg --https=8443 http://127.0.0.1:8090
-```
-
-之后访问 `https://armbian-1.tailbae726.ts.net:8443`，PWA 可正常安装。
-
-## 目录结构
-
-```
-cmd/nav/            入口
-internal/config/    环境变量配置
-internal/db/        SQLite 打开与 DSN（PRAGMA 必须走 DSN）
-internal/migrate/   迁移器（embed *.sql + PRAGMA user_version）
-internal/server/    chi 路由装配
-internal/web/       go:embed 的前端产物与 SPA 回退
-web/                Svelte 5 前端源码
-deploy/             compose 与 .env 模板
-docs/               规格书与技术调研
-```
-
-## 已知约束
-
-- SQLite 必须放在**本地文件系统**（eMMC/ext4）。WAL 在 NFS/CIFS 上会损坏。
-- 备份时 `nav.db-wal` 与 `nav.db-shm` 要一起带走，或用 `VACUUM INTO` 生成一致快照。
-- 应用内**无认证**（依赖 tailnet 边界）。任何能连上 tailnet 的设备都有写权限。
-
-### ⚠️ 两个会浪费你半小时的坑（都已踩过）
-
-1. **`.sql` 文件必须是纯 ASCII。** sqlc v1.31.1 的 SQLite 解析器遇到多字节 UTF-8 会**静默截断 token**，
-   报出完全误导的语法错（`SELECT` 被解析成 `ECT`、`:many` 变成 `:ma`）。
-   实测：1072 个非 ASCII 字节 → 8 个假错误；清零 → 干净生成。
-   **所以 SQL 注释只写英文，中文解释放 Go 代码或文档里。**
-
-2. **`vite build` 会清空 `internal/web/dist/`**（`emptyOutDir`），把 `.gitkeep` 一并删掉，
-   而 `//go:embed` 在目录不存在时是**编译失败**——新克隆会直接 build 不过。
-   已在 npm `build` 脚本里构建后补回占位文件。
-
-### 图标抓取与 `NAV_ALLOW_PRIVATE_FETCH`
-
-图标抓取链：Google `faviconV2` → DuckDuckGo `ip3` → 自建 HTML 发现（`<link rel="icon">` / `apple-touch-icon`）→ `/favicon.ico` → 纯色文字兜底。
-
-抓取是**服务端代取用户填写的 URL**，所以默认开启 SSRF 防护（拨号层校验真实 IP，挡回环/私网/链路本地地址）。
-代价是：书签里那些 `http://192.168.x.x` 的内网服务（路由器、NAS、自建面板）永远抓不到图标。
-
-需要的话显式打开：
-
-```bash
-NAV_ALLOW_PRIVATE_FETCH=1     # 仅在你信任 tailnet 边界、且确实要给内网书签配图标时
-```
-
-打开后回环与私网地址都会允许 —— 这是拿 SSRF 防护换可用性，请自行按威胁模型取舍。
-（e2e 的图标用例就是靠这个开关指向本地站点，从而在不依赖外网的情况下覆盖完整的 HTML 发现链路。）
-
-### 壁纸与设置
-
-设置入口在右上角齿轮。四个分区：
-
-- **外观**：主题、本页壁纸（跟随全局 / 本页单独指定）、轮换（关闭 / 每次进入随机 / 定时）、无壁纸时的兜底色
-- **壁纸**：上传（≤10MB，服务端生成 1920 宽 JPEG 缩略图）或登记图床 URL（前端直链，省服务器流量，可一键"下载到服务器"固化）；可排序、删除
-- **搜索**：默认引擎 + 引擎列表（内置引擎可改可改色，但**不能删**；删掉自定义引擎时若它是默认，会自动回落到内置）
-- **交互**：合并悬停阈值、边缘翻页阈值（都可 0–1000ms 调）
-
-壁纸与原图都是**内容寻址**存储，重复上传同一张不会占两份；删除时按引用计数清理磁盘文件。
+CI（GitHub Actions）产出 `linux/amd64` + `linux/arm64` 双架构镜像到 `ghcr.io/ffdkj/my_nav`。
 
 ### PWA 与 HTTPS 的关系（重要）
 

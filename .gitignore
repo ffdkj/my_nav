@@ -50,6 +50,7 @@ e2e/*.png
 .e2e/
 
 # --- 临时/验证目录 ---
+.piptools/
 .scratch/
 .smoke/
 .research/
