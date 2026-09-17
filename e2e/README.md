@@ -13,12 +13,15 @@ make e2e          # = ./e2e/run.sh
 
 `node debug-drag.mjs` 是拖拽诊断脚本（逐步打印 DOM 顺序、元素 transform、以及是否发出 PUT）。
 
-用例：`smoke.mjs`（基础交互与排序）、`folders.mjs`（合并/小夹/大夹）、`pages.mjs`（多页与跨页拖拽）。
+用例：`smoke.mjs`（基础交互与排序）、`folders.mjs`（合并/小夹/大夹）、`pages.mjs`（多页与跨页拖拽）、
+`appearance.mjs`（白天/黑夜主题、每页壁纸、换页平移动画）。
 每个用例各有独立的数据目录与端口，互不污染，也能单独跑：
 
 ```bash
 NAV_BASE=http://127.0.0.1:18100 node e2e/pages.mjs   # 需先自行起一个后端
 ```
+
+`node debug-drag.mjs` / `node debug-slide.mjs` 是诊断脚本（拖拽 / 换页动画）。
 
 ## 已知坑（都已在代码里修掉，改这里时别踩回去）
 
@@ -54,3 +57,20 @@ NAV_BASE=http://127.0.0.1:18100 node e2e/pages.mjs   # 需先自行起一个后�
 
 6. 排查这类问题的最快手段是打开库自带的调试模式：`setDebugMode(true)`
    （`svelte-dnd-action` 导出），它会直接把拒绝/判定理由打在 console 里。
+
+7. **transform 过渡跑在合成器线程，headless 下读不到中间值。**
+   `getComputedStyle(el).transform` 与 `el.getBoundingClientRect()` 在动画播放期间
+   可能**整段停在起点或终点**，而且同一个动画的两个方向表现还不一样
+   （`e2e/appearance.mjs` 的 `maxShift` 就是这么来的：一个方向 0px、另一个方向 197px，
+   但动画其实都正常）。
+   所以断言换页动画时只能用主线程**必然**能看到的东西：inline style 的内容
+   （`translateX(±100%)` → `translateX(0%)`）、`transition-property/duration`、
+   快照与壁纸轨道在不在、以及固定 UI 的 rect（它们没有 transform，读数稳定）。
+   想看逐帧真相用 `node e2e/debug-slide.mjs`（会打印 rect/computed/inline 三列，便于对照）。
+
+8. **"写错表却写成功了"这类 bug 只有跨一次刷新才暴露。**
+   `appearance.mjs` 的核心回归是：把 `wallpaper_mode/wallpaper_id` 写进全局 `settings`
+   也能"成功"（服务端白名单里有这两个键），点完当下看起来完全正常，
+   只有刷新后才被服务端打回 `global`。因此这类用例必须同时断言
+   **服务端数据**（`GET /api/pages/`）与**刷新后的画面**，只看当前 DOM 会漏。
+

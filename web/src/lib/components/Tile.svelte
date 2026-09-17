@@ -42,8 +42,8 @@
       draggable="false"
       style="-webkit-user-drag:none"
       class="flex size-[var(--tile)] flex-col items-center justify-center gap-1 overflow-hidden
-             rounded-[var(--radius-tile)] bg-white/10 ring-1 ring-white/15 backdrop-blur-sm transition
-             hover:bg-white/20 hover:ring-white/30 focus-visible:ring-3 focus-visible:ring-accent-500 focus-visible:outline-none"
+             rounded-[var(--radius-tile)] bg-fg/10 ring-1 ring-fg/15 backdrop-blur-sm transition
+             hover:bg-fg/20 hover:ring-fg/30 focus-visible:ring-3 focus-visible:ring-accent-500 focus-visible:outline-none"
       aria-label={link.title || host}
       title={link.url}
     >
@@ -58,7 +58,7 @@
           {initialOf(link)}
         </span>
       {/if}
-      <span class="max-w-[90%] truncate text-[11px] leading-none text-white/85">
+      <span class="max-w-[90%] truncate text-[11px] leading-none text-fg/85">
         {link.title || host}
       </span>
     </a>
@@ -69,7 +69,7 @@
       <button
         type="button"
         onclick={onedit}
-        class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-white/80 ring-1 ring-white/20 hover:bg-accent-500 hover:text-white"
+        class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-fg/80 ring-1 ring-fg/20 hover:bg-accent-500 hover:text-white"
         aria-label="编辑 {link.title}"
       >
         &#9998;
@@ -77,7 +77,7 @@
       <button
         type="button"
         onclick={ondelete}
-        class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-white/80 ring-1 ring-white/20 hover:bg-red-500 hover:text-white"
+        class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-fg/80 ring-1 ring-fg/20 hover:bg-red-500 hover:text-white"
         aria-label="删除 {link.title}"
       >
         &#10005;

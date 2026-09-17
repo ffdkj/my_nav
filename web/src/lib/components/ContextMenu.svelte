@@ -39,7 +39,7 @@
     }}
   ></div>
   <div
-    class="fixed z-[61] min-w-44 overflow-hidden rounded-xl bg-surface-800 py-1 text-sm ring-1 ring-white/15"
+    class="fixed z-[61] min-w-44 overflow-hidden rounded-xl bg-surface-800 py-1 text-sm ring-1 ring-fg/15"
     style="left: {Math.min(target.x, window.innerWidth - 190)}px; top: {Math.min(target.y, window.innerHeight - 220)}px;"
     role="menu"
     aria-label="图标操作"
@@ -50,7 +50,7 @@
         onedit(target.item)
         onclose()
       }}
-      class="block w-full cursor-pointer px-4 py-2 text-left hover:bg-white/10"
+      class="block w-full cursor-pointer px-4 py-2 text-left hover:bg-fg/10"
       role="menuitem"
     >
       编辑
@@ -64,7 +64,7 @@
           void board.setFolderSize(target.item.id, next as 1 | 2)
           onclose()
         }}
-        class="block w-full cursor-pointer px-4 py-2 text-left hover:bg-white/10"
+        class="block w-full cursor-pointer px-4 py-2 text-left hover:bg-fg/10"
         role="menuitem"
       >
         {(target.item.size ?? 1) === 2 ? '缩小为 1 格' : '放大为 2×2'}
@@ -72,13 +72,13 @@
     {/if}
 
     {#if others.length > 0}
-      <div class="my-1 border-t border-white/10"></div>
-      <p class="px-4 py-1 text-xs text-white/40">移动到…</p>
+      <div class="my-1 border-t border-fg/10"></div>
+      <p class="px-4 py-1 text-xs text-fg/40">移动到…</p>
       {#each others as p (p.id)}
         <button
           type="button"
           onclick={() => moveTo(p.id)}
-          class="block w-full cursor-pointer px-4 py-2 text-left hover:bg-white/10"
+          class="block w-full cursor-pointer px-4 py-2 text-left hover:bg-fg/10"
           role="menuitem"
         >
           {p.name}
@@ -86,14 +86,14 @@
       {/each}
     {/if}
 
-    <div class="my-1 border-t border-white/10"></div>
+    <div class="my-1 border-t border-fg/10"></div>
     <button
       type="button"
       onclick={() => {
         ondelete(target.item)
         onclose()
       }}
-      class="block w-full cursor-pointer px-4 py-2 text-left text-red-300 hover:bg-red-500/20"
+      class="block w-full cursor-pointer px-4 py-2 text-left text-red-600 dark:text-red-300 hover:bg-red-500/20"
       role="menuitem"
     >
       删除

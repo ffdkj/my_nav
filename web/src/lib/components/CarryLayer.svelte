@@ -47,7 +47,7 @@
 
 {#if carried}
   <div
-    class="pointer-events-none fixed z-[70] flex size-[var(--tile)] items-center justify-center rounded-[var(--radius-tile)] bg-white/20 opacity-90 ring-2 ring-accent-500 backdrop-blur"
+    class="pointer-events-none fixed z-[70] flex size-[var(--tile)] items-center justify-center rounded-[var(--radius-tile)] bg-fg/20 opacity-90 ring-2 ring-accent-500 backdrop-blur"
     style="left: {pos.x - 32}px; top: {pos.y - 32}px;"
     aria-hidden="true"
   >
@@ -58,7 +58,7 @@
     {/if}
   </div>
   <div
-    class="pointer-events-none fixed z-[70] -translate-x-1/2 rounded-full bg-surface-800/90 px-3 py-1 text-xs text-white ring-1 ring-white/20"
+    class="pointer-events-none fixed z-[70] -translate-x-1/2 rounded-full bg-surface-800/90 px-3 py-1 text-xs text-fg ring-1 ring-fg/20"
     style="left: {pos.x}px; top: {pos.y + 44}px;"
   >
     松手放到「{board.page?.name ?? ''}」

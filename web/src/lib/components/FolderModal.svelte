@@ -59,7 +59,7 @@
     }}
   >
     <div
-      class="w-full max-w-sm rounded-2xl bg-surface-800/85 p-4 ring-1 ring-white/15"
+      class="w-full max-w-sm rounded-2xl bg-surface-800/85 p-4 ring-1 ring-fg/15"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -67,12 +67,12 @@
       <div class="mb-3 flex items-center justify-between">
         <h2 class="text-sm font-semibold">
           {title}
-          <span class="ml-1 text-white/40">{zoneItems.length}/{MAX_FOLDER_ITEMS}</span>
+          <span class="ml-1 text-fg/40">{zoneItems.length}/{MAX_FOLDER_ITEMS}</span>
         </h2>
         <button
           type="button"
           onclick={onclose}
-          class="cursor-pointer rounded-lg px-2 py-1 text-sm text-white/60 hover:bg-white/10 hover:text-white"
+          class="cursor-pointer rounded-lg px-2 py-1 text-sm text-fg/60 hover:bg-fg/10 hover:text-fg"
           aria-label="关闭"
         >
           &#10005;
@@ -102,7 +102,7 @@
             <button
               type="button"
               onclick={() => eject(child)}
-              class="absolute -top-1 -right-1 flex size-4 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[9px] text-white/80 ring-1 ring-white/20 opacity-0 transition group-hover/mini:opacity-100 hover:bg-red-500"
+              class="absolute -top-1 -right-1 flex size-4 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[9px] text-fg/80 ring-1 ring-fg/20 opacity-0 transition group-hover/mini:opacity-100 hover:bg-red-500 hover:text-white"
               aria-label="移出到主网格"
               title="移出到主网格"
             >
@@ -112,7 +112,7 @@
         {/each}
       </ul>
 
-      <p class="mt-3 text-[11px] text-white/40">
+      <p class="mt-3 text-[11px] text-fg/40">
         拖动可排序；把图标拖出面板即回到主网格；上限 {MAX_FOLDER_ITEMS} 个。
       </p>
     </div>

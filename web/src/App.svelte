@@ -15,10 +15,10 @@
   import { api } from '$lib/api'
   import { board } from '$lib/store/board.svelte'
   import { pwa } from '$lib/store/pwa.svelte'
+  import { theme } from '$lib/store/theme.svelte'
   import { ui } from '$lib/store/ui.svelte'
   import type { Item, Link } from '$lib/types'
 
-  let dark = $state(true)
   let dialogOpen = $state(false)
   let editing = $state<Link | null>(null)
   let openFolder = $state<Item | null>(null)
@@ -27,17 +27,67 @@
   let settingsOpen = $state(false)
   let menu = $state<MenuTarget | null>(null)
 
+  /** 换页动画里"出场"的那份旧网格快照的宿主 */
+  let ghostHost = $state<HTMLElement | null>(null)
+  /** 参与平移的网格容器（也是换页前要克隆的对象） */
+  let stage = $state<HTMLElement | null>(null)
+
   let started = false
   $effect(() => {
     if (!started) {
       started = true
+      theme.init()
       void board.boot()
       pwa.init()
     }
   })
 
+  // 主题：settings.theme 是事实源，init() 里的 localStorage 只是首屏缓存。
+  // 这个 effect 读 theme.dark，所以「跟随系统」时系统换了深浅色也会自动重跑。
   $effect(() => {
-    document.documentElement.classList.toggle('dark', dark)
+    theme.syncFromServer(board.settings['theme'])
+    theme.apply()
+  })
+
+  // 换页前抓一份当前网格的 DOM 快照（board.selectPage 在数据换掉之前调用它）。
+  // 克隆的是舞台**里面**那层，避免把 data-testid="page-stage" 也复制一份出来。
+  $effect(() => {
+    board.snapshotGrid = () => {
+      const el = stage?.firstElementChild as HTMLElement | null | undefined
+      if (!el) return null
+      const clone = el.cloneNode(true) as HTMLElement
+      // 快照只是画面：不能接收焦点、不该进无障碍树（克隆里带着 <a href>）
+      clone.setAttribute('inert', '')
+      clone.setAttribute('aria-hidden', 'true')
+      return clone
+    }
+    return () => {
+      board.snapshotGrid = null
+    }
+  })
+
+  // 动画状态机：transition 变化 → 塞入快照 → 等两帧 → 让 CSS 过渡跑起来
+  $effect(() => {
+    const t = board.transition
+    if (!t || !ghostHost) {
+      ghostHost?.replaceChildren()
+      return
+    }
+    ghostHost.replaceChildren(...(t.ghost ? [t.ghost] : []))
+  })
+
+  /** 出场快照：从 0 平移到屏幕外（方向与入场相反） */
+  const ghostStyle = $derived.by(() => {
+    const t = board.transition
+    if (!t) return 'display: none'
+    return `transform: translateX(${board.animating ? -t.dir * 100 : 0}%); transition: transform var(--page-slide-ms) var(--page-slide-ease);`
+  })
+
+  /** 入场网格：从屏幕外平移到 0 */
+  const stageStyle = $derived.by(() => {
+    const t = board.transition
+    if (!t) return ''
+    return `transform: translateX(${board.animating ? 0 : t.dir * 100}%); transition: transform var(--page-slide-ms) var(--page-slide-ease);`
   })
 
   // ---------- 翻页 ----------
@@ -162,15 +212,16 @@
       </div>
       <button
         type="button"
-        class="shrink-0 cursor-pointer rounded-full bg-white/10 p-2 ring-1 ring-white/15 hover:bg-white/20"
-        aria-label={dark ? '切换到浅色主题' : '切换到深色主题'}
-        onclick={() => (dark = !dark)}
+        class="shrink-0 cursor-pointer rounded-full bg-fg/10 p-2 ring-1 ring-fg/15 hover:bg-fg/20"
+        aria-label={theme.dark ? '切换到浅色主题' : '切换到深色主题'}
+        data-testid="theme-toggle"
+        onclick={() => theme.toggle()}
       >
-        {#if dark}<Moon size={18} />{:else}<Sun size={18} />{/if}
+        {#if theme.dark}<Moon size={18} />{:else}<Sun size={18} />{/if}
       </button>
       <button
         type="button"
-        class="shrink-0 cursor-pointer rounded-full bg-white/10 p-2 ring-1 ring-white/15 hover:bg-white/20"
+        class="shrink-0 cursor-pointer rounded-full bg-fg/10 p-2 ring-1 ring-fg/15 hover:bg-fg/20"
         aria-label="打开设置"
         onclick={() => (settingsOpen = true)}
       >
@@ -179,7 +230,7 @@
     </header>
 
     {#if board.page}
-      <p class="text-xs text-white/40">
+      <p class="text-xs text-fg/40">
         {board.page.name}
         · {board.sequence.length} 个图标
         {#if board.status === 'saving'}· 保存中…{/if}
@@ -188,39 +239,55 @@
       </p>
     {/if}
 
-    <div class="flex-1">
-      {#if board.status === 'loading' && board.sequence.length === 0}
-        <p class="py-20 text-center text-sm text-white/50">加载中…</p>
-      {:else}
-        <Grid
-          onadd={openAdd}
-          onedit={openEdit}
-          ondelete={confirmDelete}
-          onopenfolder={(item) => (openFolder = item)}
-          onmenu={(target) => (menu = target)}
-          onedge={handleEdge}
-        />
-      {/if}
+    <!--
+      换页舞台：只有这里的图标参与平移。
+      搜索栏 / 主题按钮 / 设置入口 / 页码圆点都在这个 div 之外，永远不动。
+      出场的那一份是换页前克隆的旧网格（见 board.snapshotGrid），
+      它静态、不可交互，只是为了"旧页面滑出去"这一段视觉。
+    -->
+    <div class="relative flex-1">
+      <div
+        bind:this={ghostHost}
+        class="pointer-events-none absolute inset-x-0 top-0"
+        style={ghostStyle}
+        aria-hidden="true"
+        data-testid="page-ghost"
+      ></div>
+
+      <div bind:this={stage} style={stageStyle} data-testid="page-stage">
+        {#if board.status === 'loading' && board.sequence.length === 0}
+          <p class="py-20 text-center text-sm text-fg/50">加载中…</p>
+        {:else}
+          <Grid
+            onadd={openAdd}
+            onedit={openEdit}
+            ondelete={confirmDelete}
+            onopenfolder={(item) => (openFolder = item)}
+            onmenu={(target) => (menu = target)}
+            onedge={handleEdge}
+          />
+        {/if}
+      </div>
     </div>
 
     <footer class="flex flex-col items-center gap-3 pt-4">
       {#if pwa.needRefresh}
         <div
-          class="flex items-center gap-3 rounded-full bg-accent-500/95 px-4 py-1.5 text-xs text-white ring-1 ring-white/25"
+          class="flex items-center gap-3 rounded-full bg-accent-500/95 px-4 py-1.5 text-xs text-white ring-1 ring-fg/25"
           role="status"
         >
           有新版本可用
           <button
             type="button"
             onclick={() => pwa.applyUpdate()}
-            class="cursor-pointer rounded-full bg-white/20 px-2 py-0.5 font-medium hover:bg-white/30"
+            class="cursor-pointer rounded-full bg-fg/20 px-2 py-0.5 font-medium hover:bg-fg/30"
           >
             刷新
           </button>
           <button
             type="button"
             onclick={() => pwa.dismiss()}
-            class="cursor-pointer rounded-full px-2 py-0.5 hover:bg-white/20"
+            class="cursor-pointer rounded-full px-2 py-0.5 hover:bg-fg/20"
             aria-label="稍后再说"
           >
             稍后
@@ -228,7 +295,7 @@
         </div>
       {/if}
       <PageDots onmanage={() => (managerOpen = true)} />
-      <p class="text-xs text-white/30">
+      <p class="text-xs text-fg/30">
         {#if board.lastError}
           上次操作失败：{board.lastError}
         {:else}

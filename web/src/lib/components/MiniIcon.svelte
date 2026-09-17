@@ -39,7 +39,7 @@
     rel="noreferrer noopener"
     draggable="false"
     style="-webkit-user-drag:none"
-    class="flex aspect-square items-center justify-center rounded-lg bg-white/5 transition hover:bg-white/20
+    class="flex aspect-square items-center justify-center rounded-lg bg-fg/5 transition hover:bg-fg/20
            focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:outline-none"
     aria-label={label}
     title={label}
@@ -47,7 +47,7 @@
     {@render face()}
   </a>
 {:else}
-  <span class="flex aspect-square items-center justify-center rounded-lg bg-white/5">
+  <span class="flex aspect-square items-center justify-center rounded-lg bg-fg/5">
     {@render face()}
   </span>
 {/if}

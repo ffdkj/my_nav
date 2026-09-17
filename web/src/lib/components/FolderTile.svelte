@@ -20,8 +20,8 @@
   <button
     type="button"
     onclick={onopen}
-    class="size-full cursor-pointer rounded-[var(--radius-tile)] bg-white/10 p-1.5 ring-1 ring-white/15 backdrop-blur-sm transition
-           hover:bg-white/20 hover:ring-white/30 focus-visible:ring-3 focus-visible:ring-accent-500 focus-visible:outline-none"
+    class="size-full cursor-pointer rounded-[var(--radius-tile)] bg-fg/10 p-1.5 ring-1 ring-fg/15 backdrop-blur-sm transition
+           hover:bg-fg/20 hover:ring-fg/30 focus-visible:ring-3 focus-visible:ring-accent-500 focus-visible:outline-none"
     aria-label="打开 {label}"
     aria-haspopup="dialog"
     title={label}
@@ -32,7 +32,7 @@
         {#if links[i]}
           <MiniIcon link={links[i]} />
         {:else}
-          <span class="aspect-square rounded-lg bg-white/5"></span>
+          <span class="aspect-square rounded-lg bg-fg/5"></span>
         {/if}
       {/each}
     </span>
@@ -44,7 +44,7 @@
     <button
       type="button"
       onclick={onedit}
-      class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-white/80 ring-1 ring-white/20 hover:bg-accent-500 hover:text-white"
+      class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-fg/80 ring-1 ring-fg/20 hover:bg-accent-500 hover:text-white"
       aria-label="编辑 {label}"
     >
       &#9998;
@@ -52,7 +52,7 @@
     <button
       type="button"
       onclick={ondelete}
-      class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-white/80 ring-1 ring-white/20 hover:bg-red-500 hover:text-white"
+      class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-fg/80 ring-1 ring-fg/20 hover:bg-red-500 hover:text-white"
       aria-label="删除 {label}"
     >
       &#10005;

@@ -14,7 +14,7 @@
       type="button"
       onclick={() => board.selectPage(p.id)}
       class="size-2.5 cursor-pointer rounded-full transition
-             {p.id === board.page?.id ? 'scale-125 bg-white' : 'bg-white/30 hover:bg-white/60'}"
+             {p.id === board.page?.id ? 'scale-125 bg-fg' : 'bg-fg/30 hover:bg-fg/60'}"
       aria-label="切换到 {p.name}"
       aria-current={p.id === board.page?.id}
       title={p.name}
@@ -24,7 +24,7 @@
   <button
     type="button"
     onclick={onmanage}
-    class="ml-3 cursor-pointer rounded-full px-2 py-0.5 text-sm text-white/50 hover:bg-white/10 hover:text-white"
+    class="ml-3 cursor-pointer rounded-full px-2 py-0.5 text-sm text-fg/50 hover:bg-fg/10 hover:text-fg"
     aria-label="页面管理"
     title="页面管理"
   >

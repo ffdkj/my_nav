@@ -37,28 +37,28 @@
       if (e.target === e.currentTarget) onclose()
     }}
   >
-    <div class="w-full max-w-md rounded-2xl bg-surface-800 p-6 ring-1 ring-white/15" role="dialog" aria-modal="true" aria-label="编辑文件夹">
+    <div class="w-full max-w-md rounded-2xl bg-surface-800 p-6 ring-1 ring-fg/15" role="dialog" aria-modal="true" aria-label="编辑文件夹">
       <h2 class="mb-4 text-base font-semibold">编辑文件夹</h2>
 
       <label class="mb-4 block text-sm">
-        <span class="mb-1 block text-white/70">名称（留空则显示图标数量）</span>
+        <span class="mb-1 block text-fg/70">名称（留空则显示图标数量）</span>
         <input
           bind:value={name}
-          class="w-full rounded-lg bg-white/10 px-3 py-2 text-sm ring-1 ring-white/15 outline-none focus:ring-2 focus:ring-accent-500"
+          class="w-full rounded-lg bg-fg/10 px-3 py-2 text-sm ring-1 ring-fg/15 outline-none focus:ring-2 focus:ring-accent-500"
           placeholder="例如 开发工具"
           autocomplete="off"
         />
       </label>
 
       <fieldset class="mb-4 text-sm">
-        <legend class="mb-1 text-white/70">形态</legend>
+        <legend class="mb-1 text-fg/70">形态</legend>
         <div class="flex gap-2">
           <button
             type="button"
             onclick={() => (size = 1)}
             class="flex-1 cursor-pointer rounded-lg px-3 py-2 ring-1 {size === 1
               ? 'bg-accent-500 text-white ring-accent-500'
-              : 'bg-white/5 text-white/80 ring-white/15 hover:bg-white/10'}"
+              : 'bg-fg/5 text-fg/80 ring-fg/15 hover:bg-fg/10'}"
           >
             1×1（点击开模态）
           </button>
@@ -67,12 +67,12 @@
             onclick={() => (size = 2)}
             class="flex-1 cursor-pointer rounded-lg px-3 py-2 ring-1 {size === 2
               ? 'bg-accent-500 text-white ring-accent-500'
-              : 'bg-white/5 text-white/80 ring-white/15 hover:bg-white/10'}"
+              : 'bg-fg/5 text-fg/80 ring-fg/15 hover:bg-fg/10'}"
           >
             2×2（内部直接可点）
           </button>
         </div>
-        <p class="mt-1 text-xs text-white/40">当前 {count} 个图标；2×2 会占用 4 个格子。</p>
+        <p class="mt-1 text-xs text-fg/40">当前 {count} 个图标；2×2 会占用 4 个格子。</p>
       </fieldset>
 
       <div class="flex justify-between gap-2">
@@ -84,7 +84,7 @@
               onclose()
             }
           }}
-          class="cursor-pointer rounded-lg bg-red-500/80 px-4 py-2 text-sm hover:bg-red-500"
+          class="cursor-pointer rounded-lg bg-red-500/80 px-4 py-2 text-sm text-white hover:bg-red-500"
         >
           删除
         </button>
@@ -92,7 +92,7 @@
           <button
             type="button"
             onclick={onclose}
-            class="cursor-pointer rounded-lg bg-white/10 px-4 py-2 text-sm hover:bg-white/20"
+            class="cursor-pointer rounded-lg bg-fg/10 px-4 py-2 text-sm hover:bg-fg/20"
           >
             取消
           </button>

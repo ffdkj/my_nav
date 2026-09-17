@@ -20,6 +20,32 @@ import type {
 /** Service Worker 里运行时缓存的名字，必须与 vite.config.ts 的 cacheName 一致 */
 const API_CACHE_NAME = 'my-nav-api'
 
+/** 换页平移动画的状态（App.svelte 与 WallpaperLayer.svelte 都读它） */
+export interface PageTransition {
+  /** -1 = 往上一页（内容从左侧进），1 = 往下一页（内容从右侧进） */
+  dir: -1 | 1
+  /** 每次递增：同一方向连续翻页时也要能重启动画 */
+  token: number
+  /** 换页前抓的旧网格 DOM 快照；单独渲染一份旧内容会与 dndzone 的同 id 项打架 */
+  ghost: HTMLElement | null
+  /** 旧页生效的壁纸 id：与新页相同则壁纸层不平移 */
+  fromWallpaper: string | null
+}
+
+/** 动画时长：唯一事实源是 app.css 里的 --page-slide-ms（这里只在收尾定时里用） */
+function slideMs(): number {
+  if (typeof getComputedStyle !== 'function') return 260
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--page-slide-ms').trim()
+  const n = parseFloat(raw)
+  if (!Number.isFinite(n) || n <= 0) return 260
+  // 压缩后 `260ms` 会变成 `.26s`，所以要按单位换算，不能直接当毫秒用
+  return raw.endsWith('ms') ? n : n * 1000
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 /** 逻辑列数（与服务端 internal/nav.GridCols 必须一致） */
 export const GRID_COLS = 12
 /** 单个文件夹容量（与服务端 internal/nav.MaxFolderItems 一致） */
@@ -83,7 +109,14 @@ class BoardStore {
       this.engines = data.engines
 
       const wanted = this.#pageFromHash() ?? this.pages[0]
-      if (wanted) await this.selectPage(wanted.id)
+      // 壁纸列表必须**在首屏**就拉下来，不能等用户点开设置面板：
+      // activeWallpaper 是按 id 在 this.wallpapers 里查表，表是空的就返回 undefined，
+      // 壁纸层于是直接掉到兜底底色 + 暗色蒙版 ——
+      // 用户看到的就是"设好的壁纸一刷新就没了、整页糊着一层黑"。
+      await Promise.all([
+        this.loadWallpapers(),
+        wanted ? this.selectPage(wanted.id) : Promise.resolve(),
+      ])
       this.booted = true
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err)
@@ -103,12 +136,27 @@ class BoardStore {
   async selectPage(id: string) {
     // 先把排队中的写操作落库，避免切页后它们被算到新页面上
     await this.settled()
+
+    // 换页动画要在**数据换掉之前**抓旧网格的快照（克隆的是当前真实 DOM）
+    const from = this.page
+    const fromIndex = this.pageIndex
+    const animate = Boolean(from) && from?.id !== id
+    const ghost = animate ? (this.snapshotGrid?.() ?? null) : null
+    const fromWallpaper = animate ? (this.activeWallpaper?.id ?? null) : null
+
     this.status = 'loading'
     try {
       const board = await api.get<Board>(`/api/pages/${id}/board`)
       this.applyBoard(board)
       const target = `#/p/${board.page.slug}`
       if (location.hash !== target) history.replaceState(null, '', target)
+
+      if (animate && from) {
+        // 方向按页码差算，跳页（圆点/页面管理）也能得到合理方向
+        const after = this.pageIndex
+        const dir: -1 | 1 = after < fromIndex ? -1 : 1
+        this.#playTransition(dir, ghost, fromWallpaper)
+      }
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err)
       ui.error('打开页面失败：' + this.lastError)
@@ -707,6 +755,67 @@ class BoardStore {
     }
   }
 
+  // ---------- 换页平移动画 ----------
+
+  /**
+   * 换页时把"旧页面"平推出去、"新页面"推进来（iOS 主屏那种横滑）。
+   *
+   * 三件必须分清的东西：
+   *  - **图标**：跟着平移（旧的一份是 DOM 克隆，见下）
+   *  - **壁纸**：只有新旧页壁纸不同才平移；相同则纹丝不动（同一张图平移是看不出差别的，
+   *    但会在两侧露出接缝，所以干脆不动）
+   *  - **固定 UI**（搜索栏/设置按钮/页码圆点）：完全不平移，它们在动画层之外
+   *
+   * 旧内容用 `cloneNode(true)` 快照而不是"再渲染一份 Svelte 列表"：
+   * svelte-dnd-action 的 zone 靠 item id 认元素，两份同 id 的列表会互相干扰；
+   * 而且快照本来就该是静止、不可交互的——克隆恰好天然如此。
+   */
+  transition = $state.raw<PageTransition | null>(null)
+
+  /** 两帧之后置 true，让浏览器从起点位置过渡到终点位置 */
+  animating = $state(false)
+
+  /** App.svelte 挂载时注册：换页前把当前网格整体克隆一份交给动画层 */
+  snapshotGrid: (() => HTMLElement | null) | null = null
+
+  #token = 0
+  #animRaf = 0
+  #animTimer: ReturnType<typeof setTimeout> | undefined
+
+  #playTransition(dir: -1 | 1, ghost: HTMLElement | null, fromWallpaper: string | null) {
+    this.#token += 1
+    const token = this.#token
+    if (this.#animTimer) clearTimeout(this.#animTimer)
+    cancelAnimationFrame(this.#animRaf)
+
+    this.transition = { dir, token, ghost, fromWallpaper }
+    this.animating = false
+
+    if (prefersReducedMotion()) {
+      this.endTransition(token)
+      return
+    }
+
+    // 两帧：第一帧先把"起点位置"画上屏，第二帧再改成终点位置，
+    // 这样 CSS transition 才有可过渡的差值（同帧改两次会被合并成一次，动画不触发）。
+    this.#animRaf = requestAnimationFrame(() => {
+      this.#animRaf = requestAnimationFrame(() => {
+        if (this.transition?.token === token) this.animating = true
+      })
+    })
+    this.#animTimer = setTimeout(() => this.endTransition(token), slideMs() + 80)
+  }
+
+  /** 动画结束（或被打断）：收起快照并清掉 transform，元素回到静止态 */
+  endTransition(token: number) {
+    if (this.transition?.token !== token) return
+    this.animating = false
+    this.transition = null
+    cancelAnimationFrame(this.#animRaf)
+    if (this.#animTimer) clearTimeout(this.#animTimer)
+    this.#animTimer = undefined
+  }
+
   // ---------- 壁纸 ----------
 
   async loadWallpapers() {
@@ -763,10 +872,14 @@ class BoardStore {
       if (this.settings['wallpaper_id'] && !ids.has(this.settings['wallpaper_id'])) {
         await this.saveSetting('wallpaper_id', '')
       }
-      const page = this.page
-      if (page?.wallpaper_id && !ids.has(page.wallpaper_id)) {
-        page.wallpaper_id = null
-        await api.patch(`/api/pages/${page.id}`, { wallpaper_id: '' })
+      // 页面引用是一行行独立的数据，可能有多页指向这张图，逐个退回"跟随全局"
+      for (const page of this.pages) {
+        if (!page.wallpaper_id || ids.has(page.wallpaper_id)) continue
+        try {
+          await this.#patchPage(page.id, { wallpaper_mode: 'global', wallpaper_id: '' })
+        } catch {
+          /* 改不动就等下次加载以服务端为准 */
+        }
       }
     } catch (err) {
       ui.error('删除失败：' + (err instanceof Error ? err.message : String(err)))
@@ -796,6 +909,56 @@ class BoardStore {
     const wanted = pageId || globalId
     if (!wanted) return undefined
     return this.wallpapers.find((w) => w.id === wanted)
+  }
+
+  /** PATCH 一个 page 行，并把返回的记录同步到 page 与 pages 列表两处 */
+  async #patchPage(pageId: string, body: Record<string, string>) {
+    const updated = await api.patch<Page>(`/api/pages/${pageId}`, body)
+    if (this.page?.id === updated.id) this.page = updated
+    const i = this.pages.findIndex((p) => p.id === updated.id)
+    if (i >= 0) this.pages[i] = updated
+  }
+
+  /**
+   * 每页壁纸：`global` = 跟随全局，`custom` = 本页单独指定。
+   *
+   * ⚠️ 这两个字段属于 **pages 行**，不是 settings —— 曾经这里写的是
+   * `saveSetting('wallpaper_mode'/'wallpaper_id')`，于是：
+   *   1) "设为本页"实际改的是**全局**壁纸（别的页跟着一起变）；
+   *   2) 本页的值只留在内存，刷新后被服务端打回 `global`。
+   * 用户看到的现象就是"换了壁纸全局都变了，而且设置又改回了跟随全局"。
+   * 现在统一走 `PATCH /api/pages/{id}`（服务端 UpdatePage 早就支持这两个字段）。
+   */
+  async setPageWallpaper(mode: 'global' | 'custom', wallpaperId?: string): Promise<boolean> {
+    const page = this.page
+    if (!page) return false
+
+    if (mode === 'global') {
+      try {
+        await this.#patchPage(page.id, { wallpaper_mode: 'global', wallpaper_id: '' })
+        ui.success('本页已改为跟随全局壁纸')
+        return true
+      } catch (err) {
+        ui.error('保存失败：' + (err instanceof Error ? err.message : String(err)))
+        return false
+      }
+    }
+
+    // 单独指定但没给具体是哪张：退回"当前生效的 → 列表第一张"，
+    // 否则会出现"模式是 custom 但没图"→ 满屏兜底色，看起来像坏了
+    const id = wallpaperId ?? page.wallpaper_id ?? this.activeWallpaper?.id ?? this.wallpapers[0]?.id
+    if (!id) {
+      ui.error('还没有壁纸，先上传或添加一张')
+      return false
+    }
+    try {
+      await this.#patchPage(page.id, { wallpaper_mode: 'custom', wallpaper_id: id })
+      ui.success('已设为本页壁纸（只影响本页）')
+      return true
+    } catch (err) {
+      ui.error('保存失败：' + (err instanceof Error ? err.message : String(err)))
+      return false
+    }
   }
 
   // ---------- 设置与引擎 ----------

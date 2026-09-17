@@ -117,7 +117,7 @@
 
 <div class="relative w-full max-w-2xl">
   <div
-    class="flex items-center gap-2 rounded-full bg-white/10 px-3 py-2 ring-1 ring-white/15 focus-within:ring-2 focus-within:ring-accent-500"
+    class="flex items-center gap-2 rounded-full bg-fg/10 px-3 py-2 ring-1 ring-fg/15 focus-within:ring-2 focus-within:ring-accent-500"
   >
     <button
       type="button"
@@ -140,7 +140,7 @@
       }}
       onblur={() => setTimeout(() => (focused = false), 150)}
       placeholder="输入并搜索"
-      class="w-full bg-transparent text-sm outline-none placeholder:text-white/50"
+      class="w-full bg-transparent text-sm outline-none placeholder:text-fg/50"
       aria-label="搜索"
       autocomplete="off"
     />
@@ -150,7 +150,7 @@
 
   {#if pickerOpen}
     <div
-      class="absolute top-full left-0 z-40 mt-2 w-64 rounded-xl bg-surface-800 p-1 ring-1 ring-white/15"
+      class="absolute top-full left-0 z-40 mt-2 w-64 rounded-xl bg-surface-800 p-1 ring-1 ring-fg/15"
       role="listbox"
       aria-label="搜索引擎"
     >
@@ -158,8 +158,8 @@
         <button
           type="button"
           onclick={() => chooseEngine(eng.id)}
-          class="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-white/10
-                 {eng.id === engine?.id ? 'text-accent-500' : 'text-white/85'}"
+          class="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-fg/10
+                 {eng.id === engine?.id ? 'text-accent-500' : 'text-fg/85'}"
           role="option"
           aria-selected={eng.id === engine?.id}
         >
@@ -177,10 +177,10 @@
 
   {#if focused && query.trim()}
     <div
-      class="absolute top-full left-0 z-30 mt-2 w-full overflow-hidden rounded-xl bg-surface-800 ring-1 ring-white/15"
+      class="absolute top-full left-0 z-30 mt-2 w-full overflow-hidden rounded-xl bg-surface-800 ring-1 ring-fg/15"
     >
       {#if results.length === 0}
-        <p class="px-4 py-3 text-sm text-white/50">站内没有匹配，回车用 {engine?.name} 搜索</p>
+        <p class="px-4 py-3 text-sm text-fg/50">站内没有匹配，回车用 {engine?.name} 搜索</p>
       {:else}
         <ul>
           {#each results as r, i (r.item.id)}
@@ -192,15 +192,15 @@
                   openResult(r.item)
                 }}
                 class="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left text-sm
-                       {i === highlighted ? 'bg-white/10' : ''}"
+                       {i === highlighted ? 'bg-fg/10' : ''}"
               >
                 <span class="min-w-0 flex-1 truncate">{r.item.title}</span>
-                <span class="shrink-0 text-xs text-white/40">{r.item.page_name}</span>
+                <span class="shrink-0 text-xs text-fg/40">{r.item.page_name}</span>
               </button>
             </li>
           {/each}
         </ul>
-        <p class="border-t border-white/10 px-4 py-2 text-xs text-white/40">
+        <p class="border-t border-fg/10 px-4 py-2 text-xs text-fg/40">
           回车 = 用 {engine?.name} 搜索 · Ctrl/Cmd+Enter = 打开选中项
         </p>
       {/if}

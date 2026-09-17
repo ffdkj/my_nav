@@ -48,6 +48,9 @@
 | 25 | 拖拽门控 | **无编辑态**：拖拽随时可用；**触屏必须按住 300ms 才起拖**（鼠标即时），以此消除误触 |
 | 26 | 新增/删除入口 | 网格末尾常驻虚线 `+` 图块；删除 = 长按 800ms 上下文菜单 / 桌面悬停角标 `×` + 确认 |
 | 27 | PWA | 当前 http 访问下**不可安装**（非安全上下文）；组件已按可选实现，升级 HTTPS 后自动生效 |
+| 28 | 主题 | `settings.theme ∈ {light, dark, auto}`（服务端为事实源）→ 切 `<html class="dark">`；组件只用语义 token，**不写 dark: 变体**；`localStorage` 仅作首屏缓存防闪 |
+| 29 | 每页壁纸 | 写 **`pages.wallpaper_mode/wallpaper_id`**（`PATCH /api/pages/{id}`），**绝不写全局 settings**；实测把这两字段写进 settings 会造成"改本页却动了全局，刷新又被改回跟随全局" |
+| 30 | 换页动画 | 平移 260ms：**图标层**推入推出（旧页用换页前的 DOM 快照出场）；**壁纸层**仅在新旧页壁纸不同时平移（相同时纹丝不动）；**固定 UI**（搜索栏/主题按钮/设置/页码圆点）不参与；`prefers-reduced-motion` 直接跳过 |
 
 ---
 
@@ -362,8 +365,19 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 - URL 模式：前端直链（省服务器流量），提供"下载到服务器"（`materialize`，走同一 SSRF 防护与大小上限）。
 - 多张 + 排序；轮换模式 `off | load（每次进入随机）| interval（每 N 分钟）`。
 - 每页 `wallpaper_mode = global | custom`；全局壁纸在无自定义的页面上生效。
-- 兜底：纯色/渐变可配（`wallpaper_fallback`）；图片 404 时自动降级。
-- 渲染：固定定位图层 + `background-attachment: fixed` 语义；`prefers-reduced-motion` 时关闭交叉淡入。
+  ⚠️ 这两个字段在 **`pages` 行**上，改它们要走 `PATCH /api/pages/{id}`。曾经前端把它们写进了
+  全局 `settings`（键名还恰好在服务端白名单里，所以**静默成功**）：结果是"设为本页"改了全局壁纸、
+  本页的值只活在内存里，刷新即被服务端打回 `global`。这类"写错表还写成功了"的 bug 只有
+  跨一次刷新才暴露，e2e 必须断言**服务端数据 + 刷新后的画面**，不能只看当前 DOM。
+- **壁纸列表在 boot 阶段就要拉取**（与首页 board 并行）。`activeWallpaper` 是按 id 在
+  `board.wallpapers` 里查表，表没加载就返回 `undefined` → 壁纸层直接掉到兜底底色 + 蒙版，
+  表现为"设好的壁纸一刷新就没了、整页糊着一层暗"。
+- 兜底：纯色/渐变可配（`wallpaper_fallback`）；**仍是出厂默认值 `#0b1220` 时跟随主题底色**，
+  用户自己挑过颜色才按用户的选择。图片 404 时自动降级。
+- 渲染：固定定位图层 + `background-attachment: fixed` 语义；**有照片时**才压蒙版
+  （`--wallpaper-scrim` 跟随主题：深色压黑 / 浅色压白，保证两种主题下图标文字都可读）；
+  没有照片时不铺蒙版 —— 兜底底色本就该是干净的纯色，再压一层暗渐变就是"整页蒙了一层黑"
+  的元凶（连白天主题都像蒙了层黑）。`prefers-reduced-motion` 时关闭过渡。
 
 ---
 
@@ -372,7 +386,12 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 - **状态**：`*.svelte.ts` 里的 class 单例（`board`、`edit`、`dnd`、`settings`）；组件通过 `$props()` 接收，不用 store API。
 - **乐观更新**：拖拽/合并在内存立即生效，PUT board 失败则回滚 + toast。
 - **撤销栈**：内存保留最近 20 步（同一页 board 快照）→ `Ctrl/Cmd+Z`。
-- **设计令牌**：Tailwind v4 `@theme` 定义色板/圆角/阴影；暗色用 `@custom-variant dark (&:where(.dark, .dark *))` + `<html class="dark">` 由 `$effect` 驱动。
+- **设计令牌**：Tailwind v4 `@theme` 里的颜色值是 **`var()` 间接层**（`--color-surface-800: var(--c-surface-800)`），
+  `--c-*` 在 `:root`（浅色）与 `.dark`（深色）里给实际颜色。于是 `bg-surface-800`、`text-fg/60`
+  这类**同一批类名**在两种主题下自动取到不同颜色 —— 组件里**一个 `dark:` 变体都不写**。
+  前景色统一用 `fg` 语义 token（深色下近白、浅色下近黑），`white/N` 只允许出现在**彩色底**上
+  （主色按钮/单色字圆片/toast），因为那里要的确实是白色。
+  `.dark` 与 `:root` 特异性相同，靠源码顺序决胜，所以覆盖块必须写在 `@theme` 之后。
 - **图块尺寸**：CSS 变量 `--tile`（桌面 96px / 平板 84px / 手机 72px），12 列逻辑网格，显示列数 = `min(12, floor(可用宽 / (tile+gap)))`，超出列宽的项按 `row-major` 折行。
 - **无障碍**：`<nav aria-label>` + `<li>` 包真实 `<a href>`（不用 `role="grid"`）；每个 dndzone 与每个可拖项都有 `aria-label`；合并动作走 `aria-live="polite"` 播报（库不认识我们的合并状态变化）；`setKeyboardDragTrigger('space')` 以保住 Enter 打开链接。
 
@@ -398,6 +417,33 @@ e2e 一次性暴露了三个同源问题，最终设计固定为
 切页前先 `await settled()` 把队列排空。
 
 这条经验也说明：**给任何"乐观更新 + 声明式整板提交"的系统加慢 I/O，先检查写路径是否可重入。**
+
+### 9.2 换页平移动画（哪些层动、哪些层不动）
+
+| 层 | 动？ | 怎么实现 |
+|---|---|---|
+| 图标网格 | 动 | 换页**前**把当前网格 `cloneNode(true)` 成快照放进"出场层"，新网格从屏幕外推进来 |
+| 壁纸 | **仅当新旧页壁纸不同** | 铺两层轨道（`w-[200%]`），整体平移 `-50%`；壁纸相同时保持单层不动（同一张图平移看不出来，反而露接缝） |
+| 搜索栏 / 主题按钮 / 设置入口 / 页码圆点 | **不动** | 它们在动画层之外，没有 transform |
+
+三个实现要点：
+
+1. **旧内容用 DOM 快照，不再渲染一份 Svelte 列表。** `svelte-dnd-action` 的 zone 按 item id 认元素，
+   两份同 id 的列表会互相干扰；而快照本来就该静止、不可交互 —— 克隆天然如此（顺手加 `inert`，
+   否则克隆里的 `<a href>` 还能被 Tab 聚焦）。
+2. **方向按页码差算**（不是"永远往左"），所以点圆点跳页也有合理方向；
+   动画状态放在 store 里（`transition` / `animating`），网格层与壁纸层读同一份，
+   两层的位移天然同步。
+3. **两帧技巧**：先渲染起点（`translateX(±100%)`）并让浏览器上屏，下一帧再改成终点（`0%`），
+   CSS transition 才有差值可过渡。同帧改两次会被合并成一次，动画不会触发。
+
+`prefers-reduced-motion` 时直接结束过渡（不铺快照）；时长唯一事实源是 app.css 的 `--page-slide-ms`，
+store 里的收尾定时读它（注意压缩后是 `.26s`，要按单位换算）。
+
+> 写 e2e 断言时注意：transform 过渡跑在**合成器线程**，headless 下
+> `getComputedStyle().transform` 与 `getBoundingClientRect()` 可能整段停在起点或终点
+> （实测两个方向表现还不一样）。断言要用主线程必然可见的状态：inline style 的内容、
+> `transition-property/duration`、快照与轨道是否存在、以及固定 UI 的 rect（它们没有 transform）。
 
 ## 10. 交互状态机
 
@@ -522,6 +568,7 @@ e2e 一次性暴露了三个同源问题，最终设计固定为
 | **M7** | 导出 JSON/zip、导入覆盖、pre-import 备份、备份状态与下载 | 导入后数据与导出前逐字段一致 |
 | **M8** | PWA（manifest/图标/NetworkFirst/更新提示）——**已完成**：`registerType: prompt` + 应用侧写穿缓存；非安全上下文下静默降级 | e2e 双路径验收：安全上下文（127.0.0.1）下 SW 接管 + 离线可打开且数据来自缓存；局域网 IP 下不注册、不报错、应用照常可用 |
 | **M9** | Dockerfile + compose + Tailscale 边车 + README + 部署清单 | 宿主 `pull` 后一条命令起，`https://nav.tailbae726.ts.net` 可用 |
+| **M10** | 外观修缺陷：白天/黑夜真正生效（语义色板 + 蒙版跟随主题）、每页壁纸写对表、换页平移动画 | `e2e/appearance.mjs` 30 项全绿：切主题后组件底色一起翻、刷新后主题/本页壁纸都保住、动画只动该动的层 |
 
 ---
 
@@ -536,7 +583,10 @@ e2e 一次性暴露了三个同源问题，最终设计固定为
 - [ ] 空文件夹自动消失；被挤占图标顺延到最近空位
 - [ ] 多页：增删改名排序、圆点切换、滚轮/横滑/边缘悬停翻页、跨页搬图标
 - [ ] 搜索：输入出下拉、回车走引擎、`Ctrl/Cmd+Enter` 开高亮项、徽标切引擎
-- [ ] 壁纸：上传/URL、每页独立或跟随全局、轮换、兜底
+- 壁纸：上传/URL、每页独立或跟随全局、轮换、兜底
+- [ ] 白天/黑夜：一键切换（含「跟随系统」），**组件底色一起翻**，刷新后保持；壁纸蒙版深浅色各一套，无壁纸时不铺蒙版
+- [ ] 每页壁纸："设为本页"只改本页、不动全局；刷新后仍是本页那张；删除壁纸后引用它的页面退回跟随全局
+- [ ] 换页：图标平移、壁纸仅在换了壁纸时平移、搜索栏与设置按钮纹丝不动
 - [ ] 导出 JSON 与 zip；导入覆盖后数据一致；`pre-import.json` 只有一份且可下载
 - [ ] PWA：在 HTTPS 访问下可安装、更新有提示、离线可打开；在 http 访问下**优雅降级不报错**
 

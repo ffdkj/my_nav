@@ -12,7 +12,7 @@
         ? 'bg-red-500/90 text-white ring-red-300/40'
         : toast.kind === 'success'
           ? 'bg-emerald-500/90 text-white ring-emerald-300/40'
-          : 'bg-surface-700/95 text-white ring-white/20'}"
+          : 'bg-surface-700/95 text-fg ring-fg/20'}"
     >
       {toast.message}
     </button>

@@ -20,7 +20,7 @@
   管理（拖拽/删除）走 hover 编辑按钮 —— 桌面端；触屏的长按菜单在 M4 与「移动到…」一起做。
 -->
 <div
-  class="relative flex size-full flex-col rounded-[var(--radius-tile)] bg-white/[0.07] p-2 ring-1 ring-white/15 backdrop-blur-sm"
+  class="relative flex size-full flex-col rounded-[var(--radius-tile)] bg-fg/[0.07] p-2 ring-1 ring-fg/15 backdrop-blur-sm"
   aria-label={label}
 >
   <span class="grid flex-1 grid-cols-3 grid-rows-3 gap-1 text-[0.55rem]">
@@ -28,7 +28,7 @@
       {#if links[i]}
         <MiniIcon link={links[i]} mode="live" />
       {:else}
-        <span class="aspect-square rounded-lg bg-white/5"></span>
+        <span class="aspect-square rounded-lg bg-fg/5"></span>
       {/if}
     {/each}
   </span>
@@ -39,7 +39,7 @@
     <button
       type="button"
       onclick={onedit}
-      class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-white/80 ring-1 ring-white/20 hover:bg-accent-500 hover:text-white"
+      class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-fg/80 ring-1 ring-fg/20 hover:bg-accent-500 hover:text-white"
       aria-label="编辑 {label}"
     >
       &#9998;
@@ -47,7 +47,7 @@
     <button
       type="button"
       onclick={ondelete}
-      class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-white/80 ring-1 ring-white/20 hover:bg-red-500 hover:text-white"
+      class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[10px] text-fg/80 ring-1 ring-fg/20 hover:bg-red-500 hover:text-white"
       aria-label="删除 {label}"
     >
       &#10005;

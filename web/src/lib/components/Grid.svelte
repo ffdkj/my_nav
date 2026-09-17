@@ -321,7 +321,7 @@
       onclick={onadd}
       style="left: {addSlot.col * (tilePx + gapPx)}px; top: {addSlot.row * (tilePx + gapPx)}px; width: {tilePx}px; height: {tilePx}px;"
       class="absolute flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-tile)]
-             border border-dashed border-white/25 text-white/50 transition
+             border border-dashed border-fg/25 text-fg/50 transition
              hover:border-accent-500 hover:text-accent-500 focus-visible:ring-3 focus-visible:ring-accent-500 focus-visible:outline-none"
       aria-label="添加图标"
     >

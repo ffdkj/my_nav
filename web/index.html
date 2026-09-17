@@ -8,6 +8,26 @@
     <meta name="theme-color" content="#070b14" />
     <meta name="color-scheme" content="dark light" />
     <title>my_nav</title>
+    <script>
+      /*
+        首屏主题：服务端设置要等 /api/bootstrap 回来才知道，那会先闪一帧深色。
+        这里只读 localStorage 那份缓存（key 与 theme.svelte.ts 一致），
+        在样式生效前就把 .dark 定好；真正的值随后由应用覆盖。
+      */
+      try {
+        var m = localStorage.getItem('my-nav-theme')
+        var dark =
+          m === 'light'
+            ? false
+            : m === 'auto'
+              ? matchMedia('(prefers-color-scheme: dark)').matches
+              : true
+        document.documentElement.classList.toggle('dark', dark)
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+      } catch (e) {
+        /* 隐私模式下读不到：保持默认深色 */
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>

@@ -165,7 +165,7 @@
   >
     <form
       onsubmit={submit}
-      class="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-surface-800 p-6 ring-1 ring-white/15"
+      class="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-surface-800 p-6 ring-1 ring-fg/15"
       aria-label={link ? '编辑图标' : '添加图标'}
     >
       <h2 class="mb-4 text-base font-semibold">{link ? '编辑图标' : '添加图标'}</h2>
@@ -174,34 +174,34 @@
         {@render iconPreview()}
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm">{title || link?.title || '未命名'}</p>
-          <p class="truncate text-xs text-white/40">{url || link?.url}</p>
+          <p class="truncate text-xs text-fg/40">{url || link?.url}</p>
         </div>
       </div>
 
       <label class="mb-3 block text-sm">
-        <span class="mb-1 block text-white/70">网站地址</span>
+        <span class="mb-1 block text-fg/70">网站地址</span>
         <input
           id="link-url-input"
           bind:value={url}
           placeholder="https://example.com"
-          class="w-full rounded-lg bg-white/10 px-3 py-2 text-sm ring-1 ring-white/15 outline-none focus:ring-2 focus:ring-accent-500"
+          class="w-full rounded-lg bg-fg/10 px-3 py-2 text-sm ring-1 ring-fg/15 outline-none focus:ring-2 focus:ring-accent-500"
           autocomplete="off"
         />
       </label>
 
       <label class="mb-4 block text-sm">
-        <span class="mb-1 block text-white/70">网站名称（留空则自动取域名）</span>
+        <span class="mb-1 block text-fg/70">网站名称（留空则自动取域名）</span>
         <input
           bind:value={title}
           placeholder="例如 GitHub"
-          class="w-full rounded-lg bg-white/10 px-3 py-2 text-sm ring-1 ring-white/15 outline-none focus:ring-2 focus:ring-accent-500"
+          class="w-full rounded-lg bg-fg/10 px-3 py-2 text-sm ring-1 ring-fg/15 outline-none focus:ring-2 focus:ring-accent-500"
           autocomplete="off"
         />
       </label>
 
       {#if link}
-        <fieldset class="mb-4 rounded-xl bg-white/5 p-3">
-          <legend class="px-1 text-xs text-white/60">图标</legend>
+        <fieldset class="mb-4 rounded-xl bg-fg/5 p-3">
+          <legend class="px-1 text-xs text-fg/60">图标</legend>
 
           <div class="mb-3 flex gap-1" role="tablist" aria-label="图标来源">
             {#each [['auto', '自动抓取'], ['upload', '本地图标'], ['monogram', '纯色文字']] as [value, label] (value)}
@@ -213,7 +213,7 @@
                 class="flex-1 cursor-pointer rounded-lg px-2 py-1.5 text-xs ring-1 transition
                        {tab === value
                   ? 'bg-accent-500 text-white ring-accent-500'
-                  : 'bg-white/5 text-white/70 ring-white/15 hover:bg-white/10'}"
+                  : 'bg-fg/5 text-fg/70 ring-fg/15 hover:bg-fg/10'}"
               >
                 {label}
               </button>
@@ -225,19 +225,19 @@
               <button
                 type="button"
                 onclick={refetch}
-                class="cursor-pointer rounded-lg bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20"
+                class="cursor-pointer rounded-lg bg-fg/10 px-3 py-1.5 text-xs hover:bg-fg/20"
               >
                 重新抓取
               </button>
               <button
                 type="button"
                 onclick={reset}
-                class="cursor-pointer rounded-lg bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20"
+                class="cursor-pointer rounded-lg bg-fg/10 px-3 py-1.5 text-xs hover:bg-fg/20"
               >
                 重置为标准 favicon
               </button>
             </div>
-            <p class="mt-2 text-xs text-white/40">
+            <p class="mt-2 text-xs text-fg/40">
               当前状态：{link.icon_status === 'ok'
                 ? '已抓取'
                 : link.icon_status === 'miss'
@@ -251,22 +251,22 @@
               type="file"
               accept="image/png,image/jpeg,image/webp,image/svg+xml"
               onchange={upload}
-              class="block w-full cursor-pointer text-xs text-white/70 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-white/80"
+              class="block w-full cursor-pointer text-xs text-fg/70 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-fg/10 file:px-3 file:py-1.5 file:text-fg/80"
               aria-label="上传本地图标"
             />
-            <p class="mt-2 text-xs text-white/40">PNG / JPG / WebP / SVG，≤512KB（服务端会缩到 256px）</p>
+            <p class="mt-2 text-xs text-fg/40">PNG / JPG / WebP / SVG，≤512KB（服务端会缩到 256px）</p>
           {:else}
             <div class="flex flex-col gap-2">
-              <label class="text-xs text-white/70">
+              <label class="text-xs text-fg/70">
                 文字（留空取域名首字母）
                 <input
                   bind:value={monoText}
                   maxlength="2"
-                  class="mt-1 w-full rounded-lg bg-white/10 px-3 py-1.5 text-sm ring-1 ring-white/15 outline-none focus:ring-2 focus:ring-accent-500"
+                  class="mt-1 w-full rounded-lg bg-fg/10 px-3 py-1.5 text-sm ring-1 ring-fg/15 outline-none focus:ring-2 focus:ring-accent-500"
                 />
               </label>
-              <label class="text-xs text-white/70">
-                字号 <span class="text-white/40">{monoSize}</span>
+              <label class="text-xs text-fg/70">
+                字号 <span class="text-fg/40">{monoSize}</span>
                 <input
                   type="range"
                   min="12"
@@ -281,7 +281,7 @@
                     type="button"
                     onclick={() => (monoColor = c)}
                     class="size-5 cursor-pointer rounded-full ring-2 transition
-                           {monoColor.toLowerCase() === c.toLowerCase() ? 'ring-white' : 'ring-transparent'}"
+                           {monoColor.toLowerCase() === c.toLowerCase() ? 'ring-fg' : 'ring-transparent'}"
                     style="background:{c}"
                     aria-label="颜色 {c}"
                   ></button>
@@ -303,7 +303,7 @@
             </div>
           {/if}
 
-          <div class="mt-3 border-t border-white/10 pt-2">
+          <div class="mt-3 border-t border-fg/10 pt-2">
             <a
               href={link.url}
               target="_blank"
@@ -317,17 +317,17 @@
       {/if}
 
       {#if busy}
-        <p class="mb-3 text-sm text-white/60">{busy}</p>
+        <p class="mb-3 text-sm text-fg/60">{busy}</p>
       {/if}
       {#if error}
-        <p class="mb-3 text-sm text-red-400">{error}</p>
+        <p class="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>
       {/if}
 
       <div class="flex justify-end gap-2">
         <button
           type="button"
           onclick={onclose}
-          class="cursor-pointer rounded-lg bg-white/10 px-4 py-2 text-sm hover:bg-white/20"
+          class="cursor-pointer rounded-lg bg-fg/10 px-4 py-2 text-sm hover:bg-fg/20"
         >
           取消
         </button>
