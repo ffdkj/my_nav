@@ -1,0 +1,37 @@
+# --- deps / build ---
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# --- Go ---
+/nav
+/bin/
+*.test
+*.out
+coverage.*
+
+# --- local runtime data (never commit) ---
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# --- env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- editor / OS ---
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# --- agent / research scratch ---
+.research/
+.gocache/
+.gomodcache/
+.gopath/
+_research_verify/
