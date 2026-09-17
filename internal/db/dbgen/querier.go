@@ -24,6 +24,7 @@ type Querier interface {
 	GetLink(ctx context.Context, id string) (Link, error)
 	GetPage(ctx context.Context, id string) (Page, error)
 	GetPageBySlug(ctx context.Context, slug string) (Page, error)
+	ListAllLinksWithPage(ctx context.Context) ([]ListAllLinksWithPageRow, error)
 	// Folders that hold no items - used to enforce "empty folders are deleted".
 	ListEmptyFoldersForPage(ctx context.Context, pageID string) ([]string, error)
 	// engines.sql - search engines (keep this file pure ASCII, see 001_init.sql header)

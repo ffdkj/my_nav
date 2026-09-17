@@ -93,12 +93,12 @@ type FolderInput struct {
 }
 
 type BoardPayload struct {
-	Revision         int64       `json:"revision"`
-	Items            []ItemDTO   `json:"items"`
-	NewLinks         []LinkInput `json:"new_links"`
+	Revision         int64         `json:"revision"`
+	Items            []ItemDTO     `json:"items"`
+	NewLinks         []LinkInput   `json:"new_links"`
 	NewFolders       []FolderInput `json:"new_folders"`
-	DeletedLinkIDs   []string    `json:"deleted_link_ids"`
-	DeletedFolderIDs []string    `json:"deleted_folder_ids"`
+	DeletedLinkIDs   []string      `json:"deleted_link_ids"`
+	DeletedFolderIDs []string      `json:"deleted_folder_ids"`
 }
 
 // ---------- 校验 ----------

@@ -48,6 +48,11 @@ body {
 }
 
 /* 触屏上拖拽图块时不要弹出系统长按菜单 / 选中文本 */
+/* 链接元素默认是原生可拖拽的，会和指针驱动的 svelte-dnd-action 抢手势 */
+[data-tile] a {
+  -webkit-user-drag: none;
+}
+
 [data-tile] {
   -webkit-touch-callout: none;
   -webkit-user-select: none;

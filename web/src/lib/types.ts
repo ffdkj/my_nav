@@ -1,7 +1,7 @@
 /**
  * 与后端 API 共享的契约类型（手写，单一来源）。
- * 对应 docs/spec.md §6；后端 Go 结构体字段名需与此保持一致。
- * 所有实体主键为客户端生成的 UUIDv7 文本。
+ * 对应 docs/spec.md §6 与 internal/nav/types.go —— 两边字段名必须一致。
+ * 所有实体主键是客户端生成的 UUIDv7 文本。
  */
 
 export type Id = string
@@ -11,6 +11,7 @@ export interface Page {
   slug: string
   name: string
   sort_order: number
+  revision: number
   wallpaper_mode: 'global' | 'custom'
   wallpaper_id: Id | null
 }
@@ -34,26 +35,30 @@ export interface Link {
 export interface Folder {
   id: Id
   name: string | null
-  /** 1 = 1×1 小夹（外显 9 缩略图，点击开模态）；2 = 2×2 大夹（内部直接可点） */
+  /** 1 = 1x1 小夹；2 = 2x2 大夹（占 4 格、内部 9 个图标直接可点） */
   size: 1 | 2
 }
 
-/** 页面上的一个占位：要么是链接，要么是文件夹（2×2 时占 4 格） */
-export interface BoardItem {
+export interface Child {
+  id: Id
+  link_id: Id
+  sort_order: number
+}
+
+/** 客户端侧的布局单元：顺序即布局，col/row 由打包器算出 */
+export interface Item {
   id: Id
   kind: 'link' | 'folder'
   link_id?: Id
   folder_id?: Id
-  col: number
-  row: number
-  /** kind === 'folder' 时的子项顺序（夹内顺序，与 col/row 无关） */
-  children?: BoardChild[]
+  size?: 1 | 2
+  children: Child[]
 }
 
-export interface BoardChild {
-  id: Id
-  link_id: Id
-  sort_order: number
+/** 服务端返回的 board 里，item 带上了权威的 col/row */
+export interface BoardItem extends Item {
+  col: number
+  row: number
 }
 
 export interface Board {
@@ -62,6 +67,24 @@ export interface Board {
   items: BoardItem[]
   links: Link[]
   folders: Folder[]
+}
+
+export interface BoardPayload {
+  revision: number
+  items: Array<{
+    id: Id
+    kind: 'link' | 'folder'
+    link_id?: Id
+    folder_id?: Id
+    size?: number
+    col: number
+    row: number
+    children?: Child[]
+  }>
+  new_links?: Array<{ id: Id; url: string; title: string }>
+  new_folders?: Array<{ id: Id; name?: string | null; size?: number }>
+  deleted_link_ids?: Id[]
+  deleted_folder_ids?: Id[]
 }
 
 export interface SearchEngine {
@@ -75,27 +98,21 @@ export interface SearchEngine {
   is_builtin: boolean
 }
 
-export interface Settings {
-  default_engine_id: Id | null
-  merge_dwell_ms: number
-  page_flip_edge_ms: number
-  wallpaper_mode: 'global' | 'custom'
-  wallpaper_id: Id | null
-  wallpaper_rotation: 'off' | 'load' | 'interval'
-  wallpaper_interval_min: number
-  wallpaper_fallback: string
-  search_open_new_tab: boolean
-  theme: 'dark' | 'light' | 'auto'
-}
+export type Settings = Record<string, string>
 
 export interface Bootstrap {
   pages: Page[]
   settings: Settings
   engines: SearchEngine[]
-  revision: number
 }
 
-/** 统一错误体 */
+/** 搜索用的扁平链接（带所属页面信息，供全局搜索） */
+export interface LinkWithPage extends Link {
+  page_id: Id
+  page_slug: string
+  page_name: string
+}
+
 export interface ApiError {
-  error: { code: string; message: string }
+  error: { code: string; message: string; conflicts?: Array<{ col: number; row: number }> }
 }

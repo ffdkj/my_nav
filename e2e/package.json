@@ -1,0 +1,12 @@
+{
+  "name": "my-nav-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "node smoke.mjs",
+    "debug:drag": "node debug-drag.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

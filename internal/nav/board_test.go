@@ -315,7 +315,7 @@ func TestValidateBoardTable(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "bad kind",
+			name:    "bad kind",
 			payload: &BoardPayload{Items: []ItemDTO{{ID: "i1", Kind: "widget", Col: 0, Row: 0}}},
 			wantErr: true,
 		},

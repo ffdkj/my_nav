@@ -90,6 +90,79 @@ func (q *Queries) GetLink(ctx context.Context, id string) (Link, error) {
 	return i, err
 }
 
+const listAllLinksWithPage = `-- name: ListAllLinksWithPage :many
+SELECT l.id, l.title, l.url, l.open_new_tab, l.icon_source, l.icon_path, l.icon_mime, l.icon_w, l.icon_h, l.icon_status, l.icon_checked_at, l.mono_text, l.mono_color, l.mono_font_size, l.created_at, l.updated_at, p.id AS page_id, p.slug AS page_slug, p.name AS page_name
+FROM links l
+JOIN placements pl ON pl.link_id = l.id
+JOIN pages p ON p.id = pl.page_id
+ORDER BY l.title COLLATE NOCASE
+`
+
+type ListAllLinksWithPageRow struct {
+	ID            string  `json:"id"`
+	Title         string  `json:"title"`
+	Url           string  `json:"url"`
+	OpenNewTab    int64   `json:"open_new_tab"`
+	IconSource    string  `json:"icon_source"`
+	IconPath      *string `json:"icon_path"`
+	IconMime      *string `json:"icon_mime"`
+	IconW         *int64  `json:"icon_w"`
+	IconH         *int64  `json:"icon_h"`
+	IconStatus    string  `json:"icon_status"`
+	IconCheckedAt *string `json:"icon_checked_at"`
+	MonoText      *string `json:"mono_text"`
+	MonoColor     string  `json:"mono_color"`
+	MonoFontSize  int64   `json:"mono_font_size"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
+	PageID        string  `json:"page_id"`
+	PageSlug      string  `json:"page_slug"`
+	PageName      string  `json:"page_name"`
+}
+
+func (q *Queries) ListAllLinksWithPage(ctx context.Context) ([]ListAllLinksWithPageRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllLinksWithPage)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllLinksWithPageRow{}
+	for rows.Next() {
+		var i ListAllLinksWithPageRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Url,
+			&i.OpenNewTab,
+			&i.IconSource,
+			&i.IconPath,
+			&i.IconMime,
+			&i.IconW,
+			&i.IconH,
+			&i.IconStatus,
+			&i.IconCheckedAt,
+			&i.MonoText,
+			&i.MonoColor,
+			&i.MonoFontSize,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PageID,
+			&i.PageSlug,
+			&i.PageName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLinks = `-- name: ListLinks :many
 
 SELECT id, title, url, open_new_tab, icon_source, icon_path, icon_mime, icon_w, icon_h, icon_status, icon_checked_at, mono_text, mono_color, mono_font_size, created_at, updated_at FROM links ORDER BY title COLLATE NOCASE, id

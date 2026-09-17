@@ -61,6 +61,10 @@ build-go: ## 只编译 Go（沿用上一次前端产物 / placeholder）
 run: ## 本地运行（数据目录 ./data）
 	NAV_ADDR=:8080 NAV_DATA_DIR=./data ./$(BIN)
 
+.PHONY: e2e
+e2e: ## 真浏览器验收（构建 + headless Chromium 跑完整交互，含拖拽）
+	./e2e/run.sh
+
 .PHONY: check
 check: ## 前端类型检查 + Go vet
 	npm --prefix $(WEB) run check

@@ -27,3 +27,10 @@ DELETE FROM links WHERE id = ?;
 SELECT l.* FROM links l
 JOIN placements p ON p.link_id = l.id
 WHERE p.page_id = ?;
+
+-- name: ListAllLinksWithPage :many
+SELECT l.*, p.id AS page_id, p.slug AS page_slug, p.name AS page_name
+FROM links l
+JOIN placements pl ON pl.link_id = l.id
+JOIN pages p ON p.id = pl.page_id
+ORDER BY l.title COLLATE NOCASE;

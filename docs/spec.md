@@ -22,7 +22,7 @@
 |---|---|---|
 | 1 | 访问控制 | **零应用认证**（tailnet 内全权限）；不实现 `NAV_READONLY` |
 | 2 | 部署形态 | Go 单容器（`go:embed` 内嵌 SPA），把 8080 发布到 **Tailscale 虚拟 IP 的高位端口**（默认 `100.70.0.29:8090`）；其他设备直接 `http://IP:端口` 访问。**不起 Tailscale 边车、不新增 tailnet 节点、不改现有 Caddy** |
-| 3 | 布局模型 | 整数网格 `(page_id, col, row)`，**12 列制**、行数不限；显示层按屏宽自动折行；拖拽自由 + 松手吸附 |
+| 3 | 布局模型 | **顺序即布局**：数据只保存一条有序序列，`(col,row)` 由打包器算出（提交时按 12 列，渲染时按当前显示列数）——冲突/空洞/折行天然不存在；2×2 夹由打包器预留 4 格 |
 | 4 | 多页 | 底部 iOS 圆点；可命名/增删/排序；URL `#/p/<slug>`；壁纸每页独立或跟随全局（设置可切） |
 | 5 | 翻页 | 点圆点 / 滚轮 / 手势横滑 / **拖拽悬停屏幕左右边缘** |
 | 6 | 文件夹 | 单层不嵌套；容量 **9**；空夹自动删；小夹 1 格；大夹 2×2 格 |
@@ -392,7 +392,24 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 ```
 **取消与安全**：`ESC` / `pointercancel` / 窗口失焦 → 一律取消拖拽并还原，不落盘。
 
-### 10.2 拖拽与合并（svelte-dnd-action）
+### 10.2 布局打包器（`web/src/lib/layout.ts`）
+
+拖拽只需产出**新的顺序**，位置由打包器派生：
+
+```
+序列 [A,B,C] + cols=12  →  pack()  →  A(0,0) B(1,0) C(2,0)   ← 提交给服务端的是这份坐标
+同一个序列 + cols=4     →  pack()  →  A(0,0) B(1,0) C(2,0)   ← 窄屏只是"少几列再排一次"
+```
+
+这样做的收益：服务端"不重叠/不越界"的不变量永远满足；窄屏折行不需要额外的响应式规则；
+"被挤占项顺延"是排序的天然语义，不需要螺旋搜索空位。
+
+**一个实测约束**：承载 `use:dndzone` 的元素必须有真实布局盒。
+曾经为了让「+ 添加」图块加入同一个 CSS 网格而给 `<ul>` 用了 `display: contents`，
+结果 zone 的 rect 恒为 0×0，库**永远算不出落点**（拖拽能启动、元素跟着走、松手却回到原位）。
+现在 `<ul>` 是真实网格，「+」按打包结果绝对定位。详见 `e2e/README.md`。
+
+### 10.2b 拖拽与合并（svelte-dnd-action）
 - 外层网格 = 一个 `dndzone` `type:'tile'`；每个文件夹 = 嵌套 `dndzone` `type:'folder-item'`（层级 type 必须不同）。
 - `useCursorForDetection: true`（大图块压小目标）；`items` 保持为 `$state` 数组中的**普通对象**（避免 issue #644）。
 - **合并 dwell**：`consider` 收到 `DRAGGED_ENTERED_ANOTHER` 时启动 `merge_dwell_ms` 计时器 + 目标高亮/轻抖；`DRAGGED_OVER_INDEX`/`DRAGGED_LEFT` 取消；计时到 → 执行合并（源从页面移除 + 目标文件夹 push，**同一 tick 内两侧都改**，`animate:flip` 统一 `flipDurationMs`）。

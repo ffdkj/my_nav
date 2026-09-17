@@ -41,6 +41,10 @@ func New(cfg config.Config, svc *nav.Service) http.Handler {
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/bootstrap", s.h.bootstrap)
+		api.Get("/settings", s.h.getSettings)
+		api.Patch("/settings", s.h.patchSettings)
+		api.Get("/links", s.h.listLinks)
+		api.Patch("/links/{linkID}", s.h.updateLink)
 
 		api.Route("/pages", func(pages chi.Router) {
 			pages.Get("/", s.h.listPages)

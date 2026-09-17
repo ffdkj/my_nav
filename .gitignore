@@ -42,6 +42,11 @@ coverage.*
 .gomodcache/
 .gopath/
 
+# --- e2e（脚本入库；依赖、浏览器与截图不入库）---
+e2e/node_modules/
+e2e/browsers/
+e2e/*.png
+
 # --- 临时/验证目录 ---
 .scratch/
 .smoke/
