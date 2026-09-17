@@ -95,3 +95,20 @@ docs/               规格书与技术调研
 - SQLite 必须放在**本地文件系统**（eMMC/ext4）。WAL 在 NFS/CIFS 上会损坏。
 - 备份时 `nav.db-wal` 与 `nav.db-shm` 要一起带走，或用 `VACUUM INTO` 生成一致快照。
 - 应用内**无认证**（依赖 tailnet 边界）。任何能连上 tailnet 的设备都有写权限。
+
+### ⚠️ 两个会浪费你半小时的坑（都已踩过）
+
+1. **`.sql` 文件必须是纯 ASCII。** sqlc v1.31.1 的 SQLite 解析器遇到多字节 UTF-8 会**静默截断 token**，
+   报出完全误导的语法错（`SELECT` 被解析成 `ECT`、`:many` 变成 `:ma`）。
+   实测：1072 个非 ASCII 字节 → 8 个假错误；清零 → 干净生成。
+   **所以 SQL 注释只写英文，中文解释放 Go 代码或文档里。**
+
+2. **`vite build` 会清空 `internal/web/dist/`**（`emptyOutDir`），把 `.gitkeep` 一并删掉，
+   而 `//go:embed` 在目录不存在时是**编译失败**——新克隆会直接 build 不过。
+   已在 npm `build` 脚本里构建后补回占位文件。
+
+### 环境依赖
+
+- `make`（本项目的命令入口；若你的机器没有，直接看 Makefile 里的等价命令）
+- Node 22+ / Go 1.26+ / Docker（仅部署与镜像构建需要；**本仓库开发机未装 Docker 守护进程**）
+- 开发期工具（sqlc 等）由 `make tools` 下载到 `.tools/`，不入库
