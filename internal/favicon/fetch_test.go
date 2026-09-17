@@ -273,3 +273,35 @@ func TestNormalizeUploadScalesDown(t *testing.T) {
 		t.Errorf("小图不该被改动：w=%d", w2)
 	}
 }
+
+// 代理支持：置上 HTTPS_PROXY 后，抓取必须真的走代理。
+// 这是墙内主机能抓到图标的唯一途径，所以要有测试盯着，别被重构掉。
+func TestFetcherHonoursProxyEnvironment(t *testing.T) {
+	var proxied int
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxied++
+		// 作为 HTTP 代理：请求行里带完整 URL，直接回一个 PNG 即可
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(makePNG(t, 64))
+	}))
+	defer proxy.Close()
+
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("HTTPS_PROXY", proxy.URL)
+	t.Setenv("NO_PROXY", "")
+
+	f := NewFetcher(nil, true) // allowPrivate：http 代理是回环地址
+	// 目标用 http：走 HTTP 代理时 Go 会对 http 目标发"绝对 URI"的普通请求，
+	// 而 https 目标要先 CONNECT 建隧道（假代理处理不了 TLS，测的就不是同一件事了）。
+	f.googleBase = "http://favicon.invalid/faviconV2"
+	res, err := f.Fetch(context.Background(), "http://site.invalid")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if proxied == 0 {
+		t.Fatal("请求没有经过代理：ProxyFromEnvironment 没生效")
+	}
+	if res.Source != "google" {
+		t.Errorf("source = %s, want google", res.Source)
+	}
+}

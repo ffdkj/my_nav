@@ -80,7 +80,7 @@ docker ps --filter name=my_nav --format '{{.Status}}\t{{.Ports}}'
 ```
 
 - [ ] `http://100.70.0.29:8090` 能打开，看到网格与「+ 添加」图块
-- [ ] 添加 `https://github.com` → 几秒内出现真实图标（不是纯色字母）
+- [ ] 添加 `https://github.com` → 几秒内出现**真实图标**（不是纯色字母；若是纯色字母请看第 6.5 节）
 - [ ] 手机上打开同一地址，**按住 300ms** 能拖动图标，松手吸附
 - [ ] 拖一个图标压到另一个上停住约 0.5 秒 → 合并成文件夹
 - [ ] 底部圆点能加第二页，滚轮/横滑能翻页
@@ -155,13 +155,51 @@ sudo tailscale serve status          # 确认 443→8443 的映射
 
 ---
 
+## 6.5 容器出网：图标能不能显示真实图标的前提
+
+**症状**：添加任何网址，图标都是纯色字母；连 `https://www.baidu.com` 也一样。
+
+**根因**（这台机器上实测确认）：宿主用**透明代理**（clash/shellcrash 的 TUN/TPROXY 模式）
+接管出网，而 docker bridge 网络的流量**不在其内**。于是容器：
+
+- 直连出网：被拦（连国内站都不通）
+- 指向代理端口：**不可能** —— TUN 模式下代理根本没有监听端口
+  （实测该机上唯一像代理的 `100.70.0.29:8790` 其实是个返回 JSON 的 API，HTTP/SOCKS 都连不上）
+
+**修法**：让容器**共用宿主网络栈**，它的流量就会走进宿主已有的代理链路。
+
+```bash
+sudo NETWORK=host bash /tmp/my_nav-install.sh
+```
+
+或者手工把 compose 里的 `ports:` 换成：
+
+```yaml
+    network_mode: host
+    environment:
+      NAV_ADDR: "100.70.0.29:8090"   # host 网络下端口映射不生效，直接指定绑定地址
+```
+
+完整文件见 [`deploy/compose.host-network.yaml`](../deploy/compose.host-network.yaml)。
+
+**代价**：没有网络隔离、也没有端口映射（直接绑到指定地址）。对个人 tailnet 服务可以接受。
+
+**验证**：在编辑面板点「重新抓取」，图标状态从 `miss` 变成 `ok` 即说明出网通了。
+
+> 另一种环境（有可用的 HTTP 代理端口，比如 clash 的 mixed-port 7890）不需要 host 网络：
+> 给容器加 `HTTPS_PROXY=http://<宿主可达地址>:7890` 即可 —— 抓取客户端会读这个变量
+> （`NO_PROXY` 也支持）。注意：**配了代理后，拨号层的 SSRF 私网拦截会自动让位** ——
+> 因为此时拨号对象是代理本身，由代理负责出网策略。
+
+---
+
 ## 7. 故障排查
 
 | 症状 | 原因 / 处理 |
 |---|---|
 | `manifest unknown` | 镜像标签写错。可用标签：`0.1.0`、`0.1`、`latest`、`edge`（`edge` 跟 main 分支） |
 | 容器一直 `starting` | 看 `docker logs my_nav`；多半是 `/data` 权限（镜像以 uid 65532 运行，宿主目录需要可写） |
-| 页面能开但没有图标 | 出网受限（第 0 节第三项）。不影响使用，图标会退化为纯色字母；也可以上传本地图标 |
+| 页面能开但没有图标 | **先看第 6.5 节**：多半是容器没有出网，用 `NETWORK=host` 重装即可。临时也可上传本地图标 |
 | 端口占用 | `sudo NAV_PORT=8091 bash install.sh` |
 | 局域网其他设备打不开 | 正常：只绑定了 Tailscale 虚拟 IP。要不就改 `.env` 的 `NAV_BIND_IP` |
 | 想重置一切 | 删掉 `data/` 再 `up -d`（会重新初始化空库） |

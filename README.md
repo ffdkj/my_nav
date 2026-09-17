@@ -57,6 +57,16 @@ sudo bash /tmp/my_nav-install.sh
 
 访问：`http://100.70.0.29:8090`（或 `http://armbian-1.tailbae726.ts.net:8090`）
 
+### 两种编排变体
+
+| 文件 | 用在什么环境 |
+|---|---|
+| `deploy/compose.yaml` | 默认：bridge 网络 + 端口映射到 `100.70.0.29:8090`，有网络隔离 |
+| `deploy/compose.host-network.yaml` | **容器无法出网时**（宿主用透明代理 TUN/TPROXY，bridge 流量不被接管）：共用宿主网络栈，图标抓取才能工作 |
+
+判断依据：**加任何网址图标都是纯色字母（连国内站也是）** → 用 host 网络变体。
+详见 [`docs/deploy.md`](docs/deploy.md) 第 6.5 节。
+
 ### 镜像标签
 
 | 标签 | 含义 |

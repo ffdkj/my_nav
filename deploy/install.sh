@@ -2,14 +2,19 @@
 #
 # my_nav 一键部署（在目标主机上以 root 执行）
 #
-#   bash install.sh                 # 用默认值部署
+#   bash install.sh                          # 默认（bridge + 端口映射）
+#   NETWORK=host bash install.sh             # 宿主透明代理环境：容器共用宿主网络栈
 #   NAV_BIND_IP=127.0.0.1 bash install.sh
 #   IMAGE=ghcr.io/ffdkj/my_nav:edge bash install.sh
+#
+# 什么时候要 NETWORK=host：加任何网址图标都只是纯色字母（连国内站也一样），
+# 说明容器无法出网 —— 详见 docs/deploy.md 的「容器出网」一节。
 #
 # 幂等：重复执行只会拉取/重建容器，不会覆盖已有的 .env 与 data/。
 set -euo pipefail
 
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.1.1}"
+NETWORK="${NETWORK:-bridge}"
 IMAGE="${IMAGE:-ghcr.io/ffdkj/my_nav:${VERSION}}"
 APP_DIR="${APP_DIR:-/opt/1panel/docker/compose/my_nav}"
 NAV_BIND_IP="${NAV_BIND_IP:-100.70.0.29}"
@@ -36,17 +41,28 @@ say "使用：${DC[*]}"
 
 # 抓图标要出网；这里只提示，不阻断部署
 if ! curl -sS -o /dev/null --max-time 8 "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://github.com&size=64"; then
-  say "警告：抓不到 Google favicon 端点，图标抓取会全部走兜底（纯色文字）"
+  say "警告：这台机器直连抓不到 Google favicon 端点。"
+  say "      若容器同样出不了网，图标会全部退化成纯色字母 ——"
+  say "      那种环境请改用：NETWORK=host bash install.sh（详见 docs/deploy.md）"
 fi
 
 # ---------- 2. 目录与配置 ----------
 say "准备目录 $APP_DIR"
 mkdir -p "$APP_DIR/data"
+# 容器以非 root（uid 65532）运行，且根文件系统只读 —— /data 必须可写，
+# 否则 SQLite 打不开库，容器会起来就挂。
+chown 65532:65532 "$APP_DIR/data" 2>/dev/null || say "警告：chown 失败，若容器报数据库只读请手动 chown 65532:65532 $APP_DIR/data"
 
 if [ ! -f "$APP_DIR/compose.yaml" ]; then
-  say "下载 compose.yaml"
-  curl -fsSL "$RAW_BASE/compose.yaml" -o "$APP_DIR/compose.yaml" \
-    || die "下载 compose.yaml 失败（检查出网）"
+  if [ "$NETWORK" = "host" ]; then
+    say "下载 compose.host-network.yaml（host 网络变体）"
+    curl -fsSL "$RAW_BASE/compose.host-network.yaml" -o "$APP_DIR/compose.yaml" \
+      || die "下载失败（检查出网）"
+  else
+    say "下载 compose.yaml"
+    curl -fsSL "$RAW_BASE/compose.yaml" -o "$APP_DIR/compose.yaml" \
+      || die "下载失败（检查出网）"
+  fi
 fi
 
 if [ ! -f "$APP_DIR/.env" ]; then

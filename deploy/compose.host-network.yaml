@@ -1,0 +1,37 @@
+# my_nav 生产编排 —— host 网络变体
+#
+# 什么时候需要它：**容器无法出网**的环境。典型症状是"加什么网址图标都是纯色字母"，
+# 连国内站也不例外。根因是宿主用透明代理（clash/shellcrash 的 TUN/TPROXY 模式）
+# 接管出网，而 docker bridge 的流量不在其内 —— 容器既直连不通、也没有可指向的
+# 代理端口（TUN 模式下根本没有监听端口）。
+#
+# 让容器共用宿主网络栈后，它的流量就走进宿主已有的代理链路。
+# 代价：没有网络隔离、也没有端口映射（直接绑到指定地址）。
+#
+# 用法：把下面内容作为 compose 项目内容；NAV_ADDR 必须写成宿主的实际出口地址。
+# 验证方式：添加一个网址后看图标，或在编辑面板点"重新抓取"，
+# 状态从 miss 变成 ok 即说明出网通了。
+
+services:
+  app:
+    image: ghcr.io/ffdkj/my_nav:0.1.1
+    container_name: my_nav
+    restart: unless-stopped
+    # 与宿主共用网络栈（本变体的全部意义所在）
+    network_mode: host
+    environment:
+      # host 网络下端口映射不生效，直接用 NAV_ADDR 指定绑定地址。
+      # 100.70.0.29 = 本机 Tailscale 虚拟 IP；改成 127.0.0.1 可只允许本机
+      # （配合 tailscale serve 出 HTTPS 时用这个）。
+      NAV_ADDR: "100.70.0.29:8090"
+      NAV_DATA_DIR: /data
+      NAV_LOG_LEVEL: info
+    volumes:
+      # ⚠️ 宿主上这个目录必须先建好并 chown 65532:65532
+      #（容器以非 root 运行，根文件系统只读，只有 /data 可写）
+      - ./data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
