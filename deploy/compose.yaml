@@ -10,7 +10,9 @@
 
 services:
   app:
-    image: ghcr.io/ffdkj/my_nav:latest
+    # 用固定版本号而不是 latest：这是自托管服务，升级应当是有意识的动作。
+    # 想跟最新开发版就用 :edge；想升级就把这里改成新版本号再 up -d。
+    image: ghcr.io/ffdkj/my_nav:0.1.0
     container_name: my_nav
     restart: unless-stopped
     environment:

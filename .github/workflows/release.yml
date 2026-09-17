@@ -3,6 +3,10 @@ name: release
 # 产物：ghcr.io/ffdkj/my_nav
 #   - push 到 main        → :edge
 #   - 打 tag v1.2.3       → :1.2.3, :1.2, :latest
+#
+# 注意：分支构建的标签由 metadata-action 决定。早先只写了 type=ref,event=branch，
+# 它会产出 **:main** 而不是注释里说的 :edge —— 部署用的标签名必须与这里一致，
+# 否则 pull 会得到 MANIFEST_UNKNOWN。
 # 两个架构都构建，因为开发机是 amd64 而部署目标是 arm64（Cortex-A55）。
 
 on:
@@ -70,7 +74,7 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=ref,event=branch
+            type=edge,branch=main
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
