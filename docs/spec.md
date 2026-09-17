@@ -520,7 +520,7 @@ e2e 一次性暴露了三个同源问题，最终设计固定为
 | **M5** | 图标抓取链 + 负缓存 + 上传/单色字/重新抓取 + 内容寻址 | 抓取成功/兜底/上传三条路径各有用例 |
 | **M6** | 壁纸（上传/URL/轮换/兜底/每页）、设置页、引擎 CRUD | 设置项全部持久化并跨设备一致 |
 | **M7** | 导出 JSON/zip、导入覆盖、pre-import 备份、备份状态与下载 | 导入后数据与导出前逐字段一致 |
-| **M8** | PWA（manifest/图标/NetworkFirst/更新提示）——**组件按可选实现**，仅在 HTTPS 下生效 | 升级 HTTPS 后 iOS Safari 可"添加到主屏幕"，离线可打开 shell；http 访问下不报错、不注册 SW |
+| **M8** | PWA（manifest/图标/NetworkFirst/更新提示）——**已完成**：`registerType: prompt` + 应用侧写穿缓存；非安全上下文下静默降级 | e2e 双路径验收：安全上下文（127.0.0.1）下 SW 接管 + 离线可打开且数据来自缓存；局域网 IP 下不注册、不报错、应用照常可用 |
 | **M9** | Dockerfile + compose + Tailscale 边车 + README + 部署清单 | 宿主 `pull` 后一条命令起，`https://nav.tailbae726.ts.net` 可用 |
 
 ---

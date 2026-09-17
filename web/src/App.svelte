@@ -14,6 +14,7 @@
   import Toasts from '$lib/components/Toasts.svelte'
   import { api } from '$lib/api'
   import { board } from '$lib/store/board.svelte'
+  import { pwa } from '$lib/store/pwa.svelte'
   import { ui } from '$lib/store/ui.svelte'
   import type { Item, Link } from '$lib/types'
 
@@ -31,6 +32,7 @@
     if (!started) {
       started = true
       void board.boot()
+      pwa.init()
     }
   })
 
@@ -202,6 +204,29 @@
     </div>
 
     <footer class="flex flex-col items-center gap-3 pt-4">
+      {#if pwa.needRefresh}
+        <div
+          class="flex items-center gap-3 rounded-full bg-accent-500/95 px-4 py-1.5 text-xs text-white ring-1 ring-white/25"
+          role="status"
+        >
+          有新版本可用
+          <button
+            type="button"
+            onclick={() => pwa.applyUpdate()}
+            class="cursor-pointer rounded-full bg-white/20 px-2 py-0.5 font-medium hover:bg-white/30"
+          >
+            刷新
+          </button>
+          <button
+            type="button"
+            onclick={() => pwa.dismiss()}
+            class="cursor-pointer rounded-full px-2 py-0.5 hover:bg-white/20"
+            aria-label="稍后再说"
+          >
+            稍后
+          </button>
+        </div>
+      {/if}
       <PageDots onmanage={() => (managerOpen = true)} />
       <p class="text-xs text-white/30">
         {#if board.lastError}

@@ -134,6 +134,34 @@ NAV_ALLOW_PRIVATE_FETCH=1     # 仅在你信任 tailnet 边界、且确实要给
 
 壁纸与原图都是**内容寻址**存储，重复上传同一张不会占两份；删除时按引用计数清理磁盘文件。
 
+### PWA 与 HTTPS 的关系（重要）
+
+Service Worker **只在安全上下文注册**。默认部署是 `http://<tailnet-ip>:8090`，
+那里 `serviceWorker.register()` 必然失败——所以应用对失败只记一条 `console.warn`，
+**不报错、不阻塞**（PWA 是增强，不是依赖）。想在手机上"添加到主屏幕"，需要 HTTPS：
+
+```bash
+# .env 里把绑定改成 NAV_BIND_IP=127.0.0.1，然后
+docker compose up -d
+sudo tailscale serve --bg --https=8443 http://127.0.0.1:8090
+```
+
+之后访问 `https://armbian-1.tailbae726. ts.net:8443` 即可安装 PWA。
+
+缓存策略（vite-plugin-pwa / Workbox）：
+
+| 路径 | 策略 | 原因 |
+|---|---|---|
+| 应用外壳 | precache | 离线可打开 |
+| `/api` GET | **NetworkFirst**（3s 超时） | 导航数据要最新；`CacheFirst` 会给你端上昨天的布局 |
+| `/api` 写请求 | NetworkOnly | 绝不重放写操作 |
+| `/icons`、`/wallpapers` | CacheFirst | 内容寻址，路径变则内容必变 |
+
+**一个容易忽略的坑**：Workbox 的运行时缓存只在 **GET** 时更新，而改布局走的是 PUT。
+不管的话，用户刚加的图标一断网就"消失"（离线命中的是上次 GET 的旧布局）。
+所以前端在每次提交成功后会把权威结果**写回同一份缓存**（应用侧写穿）。
+这条有 e2e 覆盖（离线重载后图标仍在）。
+
 ### 备份与迁移
 
 设置 →「数据」分区：

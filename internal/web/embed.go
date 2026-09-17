@@ -10,9 +10,18 @@ package web
 import (
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
 	"strings"
 )
+
+func init() {
+	// Go 的 MIME 表里没有 .webmanifest，默认会发成 text/plain。
+	// 规范类型是 application/manifest+json，严格的浏览器会因此拒绝解析 manifest。
+	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
+		panic(err)
+	}
+}
 
 //go:embed all:dist
 var distFS embed.FS

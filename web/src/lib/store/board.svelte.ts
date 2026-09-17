@@ -17,6 +17,9 @@ import type {
   Wallpaper,
 } from '$lib/types'
 
+/** Service Worker 里运行时缓存的名字，必须与 vite.config.ts 的 cacheName 一致 */
+const API_CACHE_NAME = 'my-nav-api'
+
 /** 逻辑列数（与服务端 internal/nav.GridCols 必须一致） */
 export const GRID_COLS = 12
 /** 单个文件夹容量（与服务端 internal/nav.MaxFolderItems 一致） */
@@ -583,6 +586,11 @@ class BoardStore {
         if (this.page?.id === pageId) {
           this.#mergeServerBoard(board, preexistingFolders)
         }
+        // 离线一致性：写操作走 PUT，而 Service Worker 的运行时缓存（NetworkFirst）
+        // 只在 **GET** 时更新。若不管，用户刚加的图标一断网就会"消失"
+        // （离线时命中的是上一次 GET 的旧布局）。所以提交成功后主动把这份权威
+        // 结果写回同一份缓存 —— 应用侧写穿（write-through）。
+        void this.#writeThroughCache(pageId, board)
         this.lastError = null
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
@@ -598,6 +606,23 @@ class BoardStore {
       } finally {
         this.status = 'idle'
       }
+    }
+  }
+
+  /** 把最新的 board 写回 Service Worker 的运行时缓存（见 #flush 里的说明）。 */
+  async #writeThroughCache(pageId: string, board: Board) {
+    // 非安全上下文里没有 CacheStorage（真实部署的 http://ip:port 就是这种情况）
+    if (typeof caches === 'undefined') return
+    try {
+      const cache = await caches.open(API_CACHE_NAME)
+      await cache.put(
+        `/api/pages/${pageId}/board`,
+        new Response(JSON.stringify(board), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    } catch {
+      /* 缓存写失败不影响主流程 */
     }
   }
 
