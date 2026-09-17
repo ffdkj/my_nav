@@ -44,6 +44,14 @@ type LinkDTO struct {
 	MonoText     *string `json:"mono_text"`
 	MonoColor    string  `json:"mono_color"`
 	MonoFontSize int64   `json:"mono_font_size"`
+	// 下面几个是给"图标候选"功能用的元数据：宽度/高度让前端知道该不该放大，
+	// icon_picked_url 记录这张图是不是用户手选的、来自哪个远程地址
+	// （NULL = 自动抓取；icon_source 的 CHECK 约束只有 auto/upload/monogram，
+	// 所以"手选"这件事只能靠这一列表达）。
+	IconMime      *string `json:"icon_mime"`
+	IconW         *int64  `json:"icon_w"`
+	IconH         *int64  `json:"icon_h"`
+	IconPickedURL *string `json:"icon_picked_url"`
 }
 
 type FolderDTO struct {

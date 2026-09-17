@@ -12,7 +12,7 @@ import (
 const clearLinkIcon = `-- name: ClearLinkIcon :exec
 UPDATE links
 SET icon_path = NULL, icon_mime = NULL, icon_w = NULL, icon_h = NULL,
-    icon_status = 'pending', icon_source = 'auto',
+    icon_status = 'pending', icon_source = 'auto', icon_picked_url = NULL,
     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
 WHERE id = ?
 `
@@ -76,7 +76,7 @@ func (q *Queries) DeleteLink(ctx context.Context, id string) error {
 }
 
 const getLink = `-- name: GetLink :one
-SELECT id, title, url, open_new_tab, icon_source, icon_path, icon_mime, icon_w, icon_h, icon_status, icon_checked_at, mono_text, mono_color, mono_font_size, created_at, updated_at FROM links WHERE id = ?
+SELECT id, title, url, open_new_tab, icon_source, icon_path, icon_mime, icon_w, icon_h, icon_status, icon_checked_at, mono_text, mono_color, mono_font_size, created_at, updated_at, icon_picked_url FROM links WHERE id = ?
 `
 
 func (q *Queries) GetLink(ctx context.Context, id string) (Link, error) {
@@ -99,12 +99,13 @@ func (q *Queries) GetLink(ctx context.Context, id string) (Link, error) {
 		&i.MonoFontSize,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IconPickedUrl,
 	)
 	return i, err
 }
 
 const listAllLinksWithPage = `-- name: ListAllLinksWithPage :many
-SELECT l.id, l.title, l.url, l.open_new_tab, l.icon_source, l.icon_path, l.icon_mime, l.icon_w, l.icon_h, l.icon_status, l.icon_checked_at, l.mono_text, l.mono_color, l.mono_font_size, l.created_at, l.updated_at, p.id AS page_id, p.slug AS page_slug, p.name AS page_name
+SELECT l.id, l.title, l.url, l.open_new_tab, l.icon_source, l.icon_path, l.icon_mime, l.icon_w, l.icon_h, l.icon_status, l.icon_checked_at, l.mono_text, l.mono_color, l.mono_font_size, l.created_at, l.updated_at, l.icon_picked_url, p.id AS page_id, p.slug AS page_slug, p.name AS page_name
 FROM links l
 JOIN placements pl ON pl.link_id = l.id
 JOIN pages p ON p.id = pl.page_id
@@ -128,6 +129,7 @@ type ListAllLinksWithPageRow struct {
 	MonoFontSize  int64   `json:"mono_font_size"`
 	CreatedAt     string  `json:"created_at"`
 	UpdatedAt     string  `json:"updated_at"`
+	IconPickedUrl *string `json:"icon_picked_url"`
 	PageID        string  `json:"page_id"`
 	PageSlug      string  `json:"page_slug"`
 	PageName      string  `json:"page_name"`
@@ -159,6 +161,7 @@ func (q *Queries) ListAllLinksWithPage(ctx context.Context) ([]ListAllLinksWithP
 			&i.MonoFontSize,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IconPickedUrl,
 			&i.PageID,
 			&i.PageSlug,
 			&i.PageName,
@@ -178,7 +181,7 @@ func (q *Queries) ListAllLinksWithPage(ctx context.Context) ([]ListAllLinksWithP
 
 const listLinks = `-- name: ListLinks :many
 
-SELECT id, title, url, open_new_tab, icon_source, icon_path, icon_mime, icon_w, icon_h, icon_status, icon_checked_at, mono_text, mono_color, mono_font_size, created_at, updated_at FROM links ORDER BY title COLLATE NOCASE, id
+SELECT id, title, url, open_new_tab, icon_source, icon_path, icon_mime, icon_w, icon_h, icon_status, icon_checked_at, mono_text, mono_color, mono_font_size, created_at, updated_at, icon_picked_url FROM links ORDER BY title COLLATE NOCASE, id
 `
 
 // links.sql - link CRUD (keep this file pure ASCII, see 001_init.sql header)
@@ -208,6 +211,7 @@ func (q *Queries) ListLinks(ctx context.Context) ([]Link, error) {
 			&i.MonoFontSize,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IconPickedUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -223,7 +227,7 @@ func (q *Queries) ListLinks(ctx context.Context) ([]Link, error) {
 }
 
 const listLinksForPage = `-- name: ListLinksForPage :many
-SELECT l.id, l.title, l.url, l.open_new_tab, l.icon_source, l.icon_path, l.icon_mime, l.icon_w, l.icon_h, l.icon_status, l.icon_checked_at, l.mono_text, l.mono_color, l.mono_font_size, l.created_at, l.updated_at FROM links l
+SELECT l.id, l.title, l.url, l.open_new_tab, l.icon_source, l.icon_path, l.icon_mime, l.icon_w, l.icon_h, l.icon_status, l.icon_checked_at, l.mono_text, l.mono_color, l.mono_font_size, l.created_at, l.updated_at, l.icon_picked_url FROM links l
 JOIN placements p ON p.link_id = l.id
 WHERE p.page_id = ?
 `
@@ -254,6 +258,7 @@ func (q *Queries) ListLinksForPage(ctx context.Context, pageID string) ([]Link, 
 			&i.MonoFontSize,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IconPickedUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -268,11 +273,45 @@ func (q *Queries) ListLinksForPage(ctx context.Context, pageID string) ([]Link, 
 	return items, nil
 }
 
+const setPickedIcon = `-- name: SetPickedIcon :exec
+UPDATE links
+SET icon_path = ?, icon_mime = ?, icon_w = ?, icon_h = ?, icon_source = 'auto',
+    icon_status = 'ok', icon_picked_url = ?, icon_checked_at = ?,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE id = ?
+`
+
+type SetPickedIconParams struct {
+	IconPath      *string `json:"icon_path"`
+	IconMime      *string `json:"icon_mime"`
+	IconW         *int64  `json:"icon_w"`
+	IconH         *int64  `json:"icon_h"`
+	IconPickedUrl *string `json:"icon_picked_url"`
+	IconCheckedAt *string `json:"icon_checked_at"`
+	ID            string  `json:"id"`
+}
+
+// The user picked one candidate by hand. Its bytes are already in the
+// content-addressed store (saved by the candidates endpoint), so this only
+// points the link at it and records where it came from (icon_picked_url).
+func (q *Queries) SetPickedIcon(ctx context.Context, arg SetPickedIconParams) error {
+	_, err := q.db.ExecContext(ctx, setPickedIcon,
+		arg.IconPath,
+		arg.IconMime,
+		arg.IconW,
+		arg.IconH,
+		arg.IconPickedUrl,
+		arg.IconCheckedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const updateLink = `-- name: UpdateLink :exec
 UPDATE links
 SET title = ?, url = ?, open_new_tab = ?, icon_source = ?, icon_path = ?, icon_mime = ?,
-    icon_w = ?, icon_h = ?, icon_status = ?, icon_checked_at = ?, mono_text = ?,
-    mono_color = ?, mono_font_size = ?,
+    icon_w = ?, icon_h = ?, icon_status = ?, icon_checked_at = ?, icon_picked_url = ?,
+    mono_text = ?, mono_color = ?, mono_font_size = ?,
     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
 WHERE id = ?
 `
@@ -288,6 +327,7 @@ type UpdateLinkParams struct {
 	IconH         *int64  `json:"icon_h"`
 	IconStatus    string  `json:"icon_status"`
 	IconCheckedAt *string `json:"icon_checked_at"`
+	IconPickedUrl *string `json:"icon_picked_url"`
 	MonoText      *string `json:"mono_text"`
 	MonoColor     string  `json:"mono_color"`
 	MonoFontSize  int64   `json:"mono_font_size"`
@@ -306,6 +346,7 @@ func (q *Queries) UpdateLink(ctx context.Context, arg UpdateLinkParams) error {
 		arg.IconH,
 		arg.IconStatus,
 		arg.IconCheckedAt,
+		arg.IconPickedUrl,
 		arg.MonoText,
 		arg.MonoColor,
 		arg.MonoFontSize,

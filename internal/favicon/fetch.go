@@ -136,15 +136,23 @@ func (f *Fetcher) probe(ctx context.Context, fn func(context.Context) (*Result, 
 	return fn(cctx)
 }
 
-func (f *Fetcher) google(ctx context.Context, pageURL string) (*Result, error) {
+// googleURL 拼出 faviconV2 的请求地址（size 由调用方给：自动链路 128、候选 256）。
+func (f *Fetcher) googleURL(pageURL string, size int) string {
 	q := url.Values{}
 	q.Set("client", "SOCIAL")
 	q.Set("type", "FAVICON")
 	q.Set("fallback_opts", "TYPE,SIZE,URL")
 	q.Set("url", pageURL) // 必须带 scheme，否则 faviconV2 返回 404
-	q.Set("size", strconv.Itoa(f.size))
+	q.Set("size", strconv.Itoa(size))
+	return f.googleBase + "?" + q.Encode()
+}
 
-	data, ctype, err := f.get(ctx, f.googleBase+"?"+q.Encode())
+func (f *Fetcher) ddgURL(host string) string {
+	return f.ddgBase + "/" + url.PathEscape(host) + ".ico"
+}
+
+func (f *Fetcher) google(ctx context.Context, pageURL string) (*Result, error) {
+	data, ctype, err := f.get(ctx, f.googleURL(pageURL, f.size))
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +160,7 @@ func (f *Fetcher) google(ctx context.Context, pageURL string) (*Result, error) {
 }
 
 func (f *Fetcher) ddg(ctx context.Context, host string) (*Result, error) {
-	data, ctype, err := f.get(ctx, f.ddgBase+"/"+url.PathEscape(host)+".ico")
+	data, ctype, err := f.get(ctx, f.ddgURL(host))
 	if err != nil {
 		return nil, err
 	}
@@ -260,13 +268,24 @@ func (f *Fetcher) getHTML(ctx context.Context, rawURL string) ([]byte, error) {
 }
 
 type iconCandidate struct {
-	href  string
-	score int
+	href   string
+	score  int
+	source string // apple-touch-icon | mask-icon | link-icon（给候选列表标出处）
 }
 
 // iconCandidates 解析 <link rel="...icon...">，按优先级排序并解析成绝对 URL。
 // 优先级参考浏览器行为：SVG 与 apple-touch-icon（通常 180x180）优于 /favicon.ico。
 func iconCandidates(body []byte, origin string) []string {
+	links := iconCandidateLinks(body, origin)
+	out := make([]string, 0, len(links))
+	for _, c := range links {
+		out = append(out, c.href)
+	}
+	return out
+}
+
+// iconCandidateLinks 与 iconCandidates 同源，但保留分数与出处（候选接口要用）。
+func iconCandidateLinks(body []byte, origin string) []iconCandidate {
 	doc, err := html.Parse(strings.NewReader(string(body)))
 	if err != nil {
 		return nil
@@ -293,13 +312,14 @@ func iconCandidates(body []byte, origin string) []string {
 			}
 			if strings.HasPrefix(href, "data:") {
 				// 内联 data URL：直接可用，但常见于小图标，给中等优先级
-				candidates = append(candidates, iconCandidate{href: href, score: 50})
+				candidates = append(candidates, iconCandidate{href: href, score: 50, source: "link-icon"})
 				goto children
 			}
 			if resolved, err := resolveURL(base, href); err == nil {
 				candidates = append(candidates, iconCandidate{
-					href:  resolved,
-					score: scoreIconLink(rel, attrs["type"], attrs["sizes"]),
+					href:   resolved,
+					score:  scoreIconLink(rel, attrs["type"], attrs["sizes"]),
+					source: sourceForRel(rel),
 				})
 			}
 		}
@@ -312,15 +332,27 @@ func iconCandidates(body []byte, origin string) []string {
 
 	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].score > candidates[j].score })
 	seen := map[string]struct{}{}
-	out := make([]string, 0, len(candidates))
+	out := make([]iconCandidate, 0, len(candidates))
 	for _, c := range candidates {
 		if _, dup := seen[c.href]; dup {
 			continue
 		}
 		seen[c.href] = struct{}{}
-		out = append(out, c.href)
+		out = append(out, c)
 	}
 	return out
+}
+
+// sourceForRel 把 rel 归成候选列表里的"出处"标签。
+func sourceForRel(rel string) string {
+	switch {
+	case strings.Contains(rel, "apple-touch-icon"):
+		return "apple-touch-icon"
+	case strings.Contains(rel, "mask-icon"):
+		return "mask-icon"
+	default:
+		return "link-icon"
+	}
 }
 
 func scoreIconLink(rel, typ, sizes string) int {

@@ -2,6 +2,7 @@ package favicon
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
@@ -53,9 +54,11 @@ func Inspect(data []byte) (mime string, w, h int, err error) {
 		return "", 0, 0, fmt.Errorf("favicon: %d bytes exceeds the %d limit", len(data), maxIconBytes)
 	}
 
-	// ICO: 00 00 01 00
+	// ICO: 00 00 01 00 —— 头部里就写着每个子图的尺寸，顺手解析出来（不解码像素）。
+	// 之前这里返回 0,0，于是 .ico 候选既没法排序、也没法参与"<64px 丢掉"的过滤。
 	if len(data) >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x01 && data[3] == 0x00 {
-		return "image/x-icon", 0, 0, nil
+		w, h, _ := ICOSize(data)
+		return "image/x-icon", w, h, nil
 	}
 	// SVG: 文本，允许前置 BOM / 空白 / XML 声明
 	if looksLikeSVG(data) {
@@ -81,6 +84,78 @@ func Inspect(data []byte) (mime string, w, h int, err error) {
 	default:
 		return "", 0, 0, ErrUnknownImage
 	}
+}
+
+// ICOSize 从 ICO 头部解析出**最大的那张子图**的边长（不解码像素）。
+//
+// 结构：ICONDIR{ reserved:2, type:2, count:2 } 紧跟 count 个 ICONDIRENTRY{ w:1, h:1, ... }。
+// 宽/高为 0 表示 256（这是 ICO 的约定）。
+func ICOSize(data []byte) (w, h int, ok bool) {
+	if len(data) < 6 || data[0] != 0x00 || data[1] != 0x00 || data[2] != 0x01 || data[3] != 0x00 {
+		return 0, 0, false
+	}
+	count := int(binary.LittleEndian.Uint16(data[4:6]))
+	if count <= 0 || len(data) < 6+count*16 {
+		return 0, 0, false
+	}
+	best := 0
+	for i := 0; i < count; i++ {
+		off := 6 + i*16
+		ew, eh := int(data[off]), int(data[off+1])
+		if ew == 0 {
+			ew = 256
+		}
+		if eh == 0 {
+			eh = 256
+		}
+		if ew > best {
+			best, w, h = ew, ew, eh
+		}
+	}
+	if best == 0 {
+		return 0, 0, false
+	}
+	return w, h, true
+}
+
+// HasAlpha 判断位图是否有透明像素（用来给候选打"透明底"标记）。
+//
+// 返回 nil 表示"判不了"：SVG / ICO 不解码（矢量或含多尺寸，通常本来就是透明的），
+// JPEG 一定不透明（直接 false）。位图按步长抽样扫描，够判断"有没有透明背景"，
+// 又不必把 4096×4096 全走一遍。
+func HasAlpha(data []byte) *bool {
+	if looksLikeSVG(data) {
+		return nil
+	}
+	if len(data) >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x01 && data[3] == 0x00 {
+		return nil
+	}
+	img, format, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil
+	}
+	if format == "jpeg" {
+		no := false
+		return &no
+	}
+	b := img.Bounds()
+	stepX, stepY := b.Dx()/128, b.Dy()/128
+	if stepX < 1 {
+		stepX = 1
+	}
+	if stepY < 1 {
+		stepY = 1
+	}
+	for y := b.Min.Y; y < b.Max.Y; y += stepY {
+		for x := b.Min.X; x < b.Max.X; x += stepX {
+			if _, _, _, a := img.At(x, y).RGBA(); a < 0xffff {
+				yes := true
+				return &yes
+			}
+		}
+	}
+	no := false
+	return &no
 }
 
 func looksLikeSVG(data []byte) bool {

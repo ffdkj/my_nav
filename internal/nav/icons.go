@@ -100,6 +100,7 @@ func (s *Service) FetchAndStoreIcon(ctx context.Context, linkID string) (*LinkDT
 		IconH:         link.IconH,
 		IconStatus:    link.IconStatus,
 		IconCheckedAt: link.IconCheckedAt,
+		IconPickedUrl: nil, // 自动重抓 = 覆盖手选（reset/refetch 都是用户主动要重抓）
 		MonoText:      link.MonoText,
 		MonoColor:     link.MonoColor,
 		MonoFontSize:  link.MonoFontSize,
@@ -169,6 +170,7 @@ func (s *Service) SetMonogram(ctx context.Context, linkID string, in MonogramInp
 		IconH:         link.IconH,
 		IconStatus:    link.IconStatus,
 		IconCheckedAt: link.IconCheckedAt,
+		IconPickedUrl: nil, // 自动重抓 = 覆盖手选（reset/refetch 都是用户主动要重抓）
 		MonoText:      link.MonoText,
 		MonoColor:     link.MonoColor,
 		MonoFontSize:  link.MonoFontSize,
@@ -226,6 +228,7 @@ func (s *Service) StoreUploadedIcon(ctx context.Context, linkID string, data []b
 		IconH:         link.IconH,
 		IconStatus:    link.IconStatus,
 		IconCheckedAt: link.IconCheckedAt,
+		IconPickedUrl: nil, // 自动重抓 = 覆盖手选（reset/refetch 都是用户主动要重抓）
 		MonoText:      link.MonoText,
 		MonoColor:     link.MonoColor,
 		MonoFontSize:  link.MonoFontSize,

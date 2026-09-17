@@ -74,6 +74,9 @@ func New(cfg config.Config, svc *nav.Service) http.Handler {
 		api.Post("/links/{linkID}/icon/reset", s.h.resetIcon)
 		api.Post("/links/{linkID}/icon/upload", s.h.uploadIcon)
 		api.Post("/links/{linkID}/icon/monogram", s.h.setMonogram)
+		api.Post("/links/{linkID}/icon/pick", s.h.pickIcon)
+		// 候选查询按 URL 工作（不需要链接已存在）：新增对话框里输入网址就能出缩略图
+		api.Post("/icons/candidates", s.h.iconCandidates)
 
 		api.Get("/engines", func(w http.ResponseWriter, r *http.Request) {
 			boot, err := s.h.svc.Bootstrap(r.Context())

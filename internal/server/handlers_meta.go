@@ -20,6 +20,37 @@ func (h *handlers) listLinks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"links": links})
 }
 
+// iconCandidates 处理 POST /api/icons/candidates：给一个网址，返回几张可用图标。
+// 不需要 link 行 —— 新增链接时（link 还不存在）也要能先让用户挑。
+func (h *handlers) iconCandidates(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		URL string `json:"url"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	out, err := h.svc.IconCandidates(r.Context(), in.URL)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// pickIcon 处理 POST /api/links/{linkID}/icon/pick：采用用户选中的那张候选图标。
+func (h *handlers) pickIcon(w http.ResponseWriter, r *http.Request) {
+	var in nav.PickIconInput
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	link, err := h.svc.PickIcon(r.Context(), chi.URLParam(r, "linkID"), in)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, link)
+}
+
 func (h *handlers) updateLink(w http.ResponseWriter, r *http.Request) {
 	var in nav.UpdateLinkInput
 	if !decodeJSON(w, r, &in) {

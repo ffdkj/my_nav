@@ -59,6 +59,10 @@ type Querier interface {
 	MaxWallpaperSortOrder(ctx context.Context) (interface{}, error)
 	MoveFolderChildren(ctx context.Context, arg MoveFolderChildrenParams) error
 	MovePlacement(ctx context.Context, arg MovePlacementParams) error
+	// The user picked one candidate by hand. Its bytes are already in the
+	// content-addressed store (saved by the candidates endpoint), so this only
+	// points the link at it and records where it came from (icon_picked_url).
+	SetPickedIcon(ctx context.Context, arg SetPickedIconParams) error
 	SetPlacementSort(ctx context.Context, arg SetPlacementSortParams) error
 	UpdateEngine(ctx context.Context, arg UpdateEngineParams) error
 	UpdateFolder(ctx context.Context, arg UpdateFolderParams) error

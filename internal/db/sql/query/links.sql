@@ -15,8 +15,8 @@ INSERT INTO links (
 -- name: UpdateLink :exec
 UPDATE links
 SET title = ?, url = ?, open_new_tab = ?, icon_source = ?, icon_path = ?, icon_mime = ?,
-    icon_w = ?, icon_h = ?, icon_status = ?, icon_checked_at = ?, mono_text = ?,
-    mono_color = ?, mono_font_size = ?,
+    icon_w = ?, icon_h = ?, icon_status = ?, icon_checked_at = ?, icon_picked_url = ?,
+    mono_text = ?, mono_color = ?, mono_font_size = ?,
     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
 WHERE id = ?;
 
@@ -38,6 +38,16 @@ ORDER BY l.title COLLATE NOCASE;
 -- name: ClearLinkIcon :exec
 UPDATE links
 SET icon_path = NULL, icon_mime = NULL, icon_w = NULL, icon_h = NULL,
-    icon_status = 'pending', icon_source = 'auto',
+    icon_status = 'pending', icon_source = 'auto', icon_picked_url = NULL,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE id = ?;
+
+-- name: SetPickedIcon :exec
+-- The user picked one candidate by hand. Its bytes are already in the
+-- content-addressed store (saved by the candidates endpoint), so this only
+-- points the link at it and records where it came from (icon_picked_url).
+UPDATE links
+SET icon_path = ?, icon_mime = ?, icon_w = ?, icon_h = ?, icon_source = 'auto',
+    icon_status = 'ok', icon_picked_url = ?, icon_checked_at = ?,
     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
 WHERE id = ?;

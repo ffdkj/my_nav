@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/ffdkj/my_nav/internal/db/dbgen"
 	"github.com/ffdkj/my_nav/internal/favicon"
@@ -32,6 +33,11 @@ type Service struct {
 
 	// AllowPrivateFetch 同时影响图标抓取与壁纸"下载到服务器"。
 	AllowPrivateFetch bool
+
+	// iconCandCache 是"同一个 URL 短时间内不重复抓"的短期缓存（见 iconcandidates.go）。
+	// 懒初始化，所以零值可用；加锁是因为 HTTP handler 是并发的。
+	iconCandMu    sync.Mutex
+	iconCandCache map[string]iconCandCacheEntry
 }
 
 type Option func(*Service)
@@ -534,16 +540,20 @@ func toPageDTO(p dbgen.Page) PageDTO {
 
 func toLinkDTO(l dbgen.Link) LinkDTO {
 	return LinkDTO{
-		ID:           l.ID,
-		Title:        l.Title,
-		URL:          l.Url,
-		OpenNewTab:   l.OpenNewTab != 0,
-		IconSource:   l.IconSource,
-		IconPath:     l.IconPath,
-		IconStatus:   l.IconStatus,
-		MonoText:     l.MonoText,
-		MonoColor:    l.MonoColor,
-		MonoFontSize: l.MonoFontSize,
+		ID:            l.ID,
+		Title:         l.Title,
+		URL:           l.Url,
+		OpenNewTab:    l.OpenNewTab != 0,
+		IconSource:    l.IconSource,
+		IconPath:      l.IconPath,
+		IconStatus:    l.IconStatus,
+		MonoText:      l.MonoText,
+		MonoColor:     l.MonoColor,
+		MonoFontSize:  l.MonoFontSize,
+		IconMime:      l.IconMime,
+		IconW:         l.IconW,
+		IconH:         l.IconH,
+		IconPickedURL: l.IconPickedUrl,
 	}
 }
 

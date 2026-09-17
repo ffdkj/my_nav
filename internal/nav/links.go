@@ -84,9 +84,16 @@ func (s *Service) UpdateLinkFields(ctx context.Context, id string, in UpdateLink
 			return nil, BadRequest("url must be an absolute http(s) URL")
 		}
 		link.Url = *in.URL
-		link.IconSource = "auto"
-		link.IconPath = nil
-		link.IconStatus = "pending"
+		// 只有"自动抓来的图标"才随 URL 作废（spec §6）。手选（icon_picked_url）、
+		// 本地上传、纯色文字都是用户明确挑过的，改个域名不该把它抹掉 ——
+		// 之前这里无条件重置，于是换个网址手选的图标就悄悄没了。
+		if link.IconSource == "auto" && link.IconPickedUrl == nil {
+			link.IconPath = nil
+			link.IconMime = nil
+			link.IconW, link.IconH = nil, nil
+			link.IconStatus = "pending"
+			link.IconCheckedAt = nil
+		}
 		link.MonoColor = monogramColor(link.Url)
 	}
 
@@ -101,6 +108,7 @@ func (s *Service) UpdateLinkFields(ctx context.Context, id string, in UpdateLink
 		IconH:         link.IconH,
 		IconStatus:    link.IconStatus,
 		IconCheckedAt: link.IconCheckedAt,
+		IconPickedUrl: link.IconPickedUrl,
 		MonoText:      link.MonoText,
 		MonoColor:     link.MonoColor,
 		MonoFontSize:  link.MonoFontSize,
@@ -129,6 +137,16 @@ var writableSettings = map[string]struct{}{
 	"wallpaper_fallback":     {},
 	"search_open_new_tab":    {},
 	"theme":                  {},
+	"tile_shape":             {},
+}
+
+// tileShapes 与前端 web/src/lib/shape.ts 的 TILE_SHAPES 一一对应：
+// 值只是"容器圆角"的代号，真正的像素/百分比写在前端那一边。
+var tileShapes = map[string]struct{}{
+	"rounded":  {},
+	"circle":   {},
+	"squircle": {},
+	"square":   {},
 }
 
 // UpdateSettings 只做 upsert，不做整体替换（PATCH 语义）。
@@ -139,6 +157,11 @@ func (s *Service) UpdateSettings(ctx context.Context, updates map[string]string)
 	for key := range updates {
 		if _, ok := writableSettings[key]; !ok {
 			return BadRequest("unknown setting: " + key)
+		}
+	}
+	if v, ok := updates["tile_shape"]; ok {
+		if _, valid := tileShapes[v]; !valid {
+			return BadRequest("invalid tile_shape: " + v)
 		}
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)

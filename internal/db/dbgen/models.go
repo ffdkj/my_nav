@@ -38,6 +38,7 @@ type Link struct {
 	MonoFontSize  int64   `json:"mono_font_size"`
 	CreatedAt     string  `json:"created_at"`
 	UpdatedAt     string  `json:"updated_at"`
+	IconPickedUrl *string `json:"icon_picked_url"`
 }
 
 type Page struct {
