@@ -46,6 +46,8 @@ coverage.*
 e2e/node_modules/
 e2e/browsers/
 e2e/*.png
+# 早期版本的截图目录（已废弃，仅用于确认清理干净）
+.e2e/
 
 # --- 临时/验证目录 ---
 .scratch/
