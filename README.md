@@ -48,7 +48,7 @@ make build      # 前端产物 → internal/web/dist → go:embed → bin/nav
 备份恢复、故障排查）。最短路径：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.1.0/deploy/install.sh -o /tmp/my_nav-install.sh
+curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.1.2/deploy/install.sh -o /tmp/my_nav-install.sh
 sudo bash /tmp/my_nav-install.sh
 ```
 
@@ -71,7 +71,7 @@ sudo bash /tmp/my_nav-install.sh
 
 | 标签 | 含义 |
 |---|---|
-| `0.1.0` / `0.1` | 固定版本（compose 默认用这个） |
+| `0.1.2` / `0.1` | 固定版本（compose 默认用这个） |
 | `latest` | 最新发布版 |
 | `edge` | main 分支最新构建 |
 
