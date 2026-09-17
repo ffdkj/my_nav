@@ -11,7 +11,8 @@
   }
   let { open, onclose }: Props = $props()
 
-  type Tab = 'look' | 'wallpapers' | 'search' | 'interaction'
+  type Tab = 'look' | 'wallpapers' | 'search' | 'interaction' | 'data'
+  let importing = $state(false)
   let tab = $state<Tab>('look')
   let busy = $state<string | null>(null)
   let urlDraft = $state('')
@@ -27,8 +28,36 @@
   let engineDraft = $state({ name: '', url_tpl: '', icon_text: '', icon_color: '#3B82F6' })
 
   $effect(() => {
-    if (open) void board.loadWallpapers()
+    if (!open) return
+    void board.loadWallpapers()
+    void board.loadBackup()
   })
+
+  async function onImport(event: Event) {
+    const input = event.currentTarget as HTMLInputElement
+    const file = input.files?.[0]
+    if (!file) return
+    const ok = window.confirm(
+      `导入「${file.name}」会用文件内容**全量覆盖**当前所有页面、图标与设置。\n\n` +
+        '导入前会自动在服务器上留一份快照（只保留最新一份）。确定继续吗？',
+    )
+    if (!ok) {
+      input.value = ''
+      return
+    }
+    importing = true
+    const done = await board.importFile(file)
+    importing = false
+    input.value = ''
+    if (done) window.location.reload()
+  }
+
+  function formatBytes(n?: number): string {
+    if (!n) return '0 B'
+    if (n < 1024) return `${n} B`
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+    return `${(n / 1024 / 1024).toFixed(1)} MB`
+  }
 
   function startEdit(engine: SearchEngine | null) {
     editingEngine = engine
@@ -131,7 +160,7 @@
       </header>
 
       <div class="flex gap-1 border-b border-white/10 px-3 py-2" role="tablist" aria-label="设置分区">
-        {#each [['look', '外观'], ['wallpapers', '壁纸'], ['search', '搜索'], ['interaction', '交互']] as [value, label] (value)}
+        {#each [['look', '外观'], ['wallpapers', '壁纸'], ['search', '搜索'], ['interaction', '交互'], ['data', '数据']] as [value, label] (value)}
           <button
             type="button"
             role="tab"
@@ -435,6 +464,67 @@
                 </div>
               </div>
             {/if}
+          </section>
+        {:else if tab === 'data'}
+          <section class="flex flex-col gap-5">
+            <div>
+              <h3 class="mb-2 text-sm font-semibold">导出</h3>
+              <div class="flex flex-wrap gap-2">
+                <a
+                  href="/api/export"
+                  download
+                  class="rounded-lg bg-white/10 px-3 py-1.5 text-sm hover:bg-white/20"
+                >
+                  下载 JSON（可读、可手改）
+                </a>
+                <a
+                  href="/api/export?withAssets=1"
+                  download
+                  class="rounded-lg bg-white/10 px-3 py-1.5 text-sm hover:bg-white/20"
+                >
+                  下载 zip（含图标与壁纸）
+                </a>
+              </div>
+              <p class="mt-2 text-xs text-white/40">
+                JSON 不含二进制，适合版本管理与手改；zip 才能完整还原图标与壁纸。
+              </p>
+            </div>
+
+            <div>
+              <h3 class="mb-2 text-sm font-semibold">导入</h3>
+              <label
+                class="inline-block cursor-pointer rounded-lg bg-accent-500 px-3 py-1.5 text-sm font-medium text-white hover:brightness-110"
+              >
+                {importing ? '导入中…' : '选择 JSON / zip 文件'}
+                <input
+                  type="file"
+                  accept=".json,.zip,application/json,application/zip"
+                  onchange={onImport}
+                  class="hidden"
+                  aria-label="导入文件"
+                />
+              </label>
+              <p class="mt-2 text-xs text-white/40">
+                <strong class="text-white/60">导入是全量覆盖</strong>：会用文件内容替换当前所有页面、图标与设置。
+                导入前服务器会自动留一份快照。
+              </p>
+            </div>
+
+            <div>
+              <h3 class="mb-2 text-sm font-semibold">导入前快照</h3>
+              {#if board.backup.exists}
+                <p class="text-xs text-white/60">
+                  最近一次：{new Date(board.backup.at ?? '').toLocaleString()}（{formatBytes(
+                    board.backup.bytes,
+                  )}）
+                  <a href="/api/backup/download" download class="ml-2 text-accent-500 hover:underline">
+                    下载
+                  </a>
+                </p>
+              {:else}
+                <p class="text-xs text-white/40">还没有快照（首次导入时自动生成，服务器上只保留最新一份）</p>
+              {/if}
+            </div>
           </section>
         {:else}
           <section class="flex flex-col gap-4">

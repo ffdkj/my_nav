@@ -297,8 +297,8 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 | POST | `/api/wallpapers/{id}/materialize` | 把图床 URL 下载固化到本地 |
 | GET/PATCH | `/api/settings` | 设置读写 |
 | GET | `/api/export` | 可读 JSON（图标/壁纸以相对路径引用） |
-| GET | `/api/export?withAssets=1` | zip：`data.json` + `icons/` + `wallpapers/` |
-| POST | `/api/import` | multipart（json 或 zip）→ **全量覆盖**；先写 `pre-import.json` |
+| GET | `/api/export?withAssets=1` | zip：`data.json` + `icons/` + `wallpapers/{orig,thumb}/` |
+| POST | `/api/import` | multipart（json 或 zip）→ **全量覆盖**；**校验通过后**才写 `pre-import.json` |
 | GET | `/api/backup` | `{exists, at, bytes}`（设置页展示） |
 | GET | `/api/backup/download` | 下载 `pre-import.json` |
 | GET | `/icons/{path}` | 图标（内容寻址 + 强缓存 + `nosniff`） |

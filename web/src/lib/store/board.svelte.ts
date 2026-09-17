@@ -821,6 +821,31 @@ class BoardStore {
     }
   }
 
+  // ---------- 导入导出与备份 ----------
+
+  backup = $state<{ exists: boolean; at?: string; bytes?: number }>({ exists: false })
+
+  async loadBackup() {
+    try {
+      this.backup = await api.get<{ exists: boolean; at?: string; bytes?: number }>('/api/backup')
+    } catch {
+      this.backup = { exists: false }
+    }
+  }
+
+  /** 全量覆盖导入。成功后整页重载——导入的页面集合可能与当前页不同。 */
+  async importFile(file: File): Promise<boolean> {
+    const form = new FormData()
+    form.append('file', file)
+    try {
+      await api.upload<Bootstrap>('/api/import', form)
+      return true
+    } catch (err) {
+      ui.error('导入失败：' + (err instanceof Error ? err.message : String(err)))
+      return false
+    }
+  }
+
   // ---------- 查询辅助 ----------
 
   linkOf(item: Item | undefined): Link | undefined {

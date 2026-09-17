@@ -99,6 +99,7 @@ func run() error {
 				favicon.NewFetcher(slog.Default(), cfg.AllowPrivateFetch),
 				cfg.AllowPrivateFetch,
 			),
+			nav.WithBackupDir(cfg.BackupDir()),
 			nav.WithLogger(slog.Default()),
 		)),
 		ReadHeaderTimeout: 10 * time.Second,

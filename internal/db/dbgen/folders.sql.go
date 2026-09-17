@@ -82,6 +82,38 @@ func (q *Queries) ListEmptyFoldersForPage(ctx context.Context, pageID string) ([
 	return items, nil
 }
 
+const listFolders = `-- name: ListFolders :many
+SELECT id, name, size, created_at FROM folders ORDER BY id
+`
+
+func (q *Queries) ListFolders(ctx context.Context) ([]Folder, error) {
+	rows, err := q.db.QueryContext(ctx, listFolders)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Folder{}
+	for rows.Next() {
+		var i Folder
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Size,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFoldersForPage = `-- name: ListFoldersForPage :many
 SELECT f.id, f.name, f.size, f.created_at FROM folders f
 JOIN placements p ON p.folder_id = f.id

@@ -47,6 +47,23 @@ run_case pages   "$((BASE_PORT+2))" pages.mjs
 run_case icons   "$((BASE_PORT+3))" icons.mjs "NAV_ALLOW_PRIVATE_FETCH=1"
 run_case settings "$((BASE_PORT+4))" settings.mjs
 
+# 导入导出用例需要知道数据目录（校验"快照只有一份"）
+run_case_transfer() {
+  local name="transfer" port="$((BASE_PORT+5))" dir="$ROOT/.smoke/transfer"
+  rm -rf "$dir"; mkdir -p "$dir"
+  echo "==> [$name] 启动后端 :$port（数据目录 .smoke/transfer）"
+  env NAV_ADDR="127.0.0.1:$port" NAV_DATA_DIR="$dir" ./bin/nav > "$dir/server.log" 2>&1 &
+  local srv=$!
+  for _ in $(seq 1 40); do
+    curl -sf "http://127.0.0.1:$port/healthz" >/dev/null && break
+    sleep 0.25
+  done
+  NAV_BASE="http://127.0.0.1:$port" NAV_DATA_DIR="$dir" node e2e/transfer.mjs || FAILED=1
+  kill "$srv" 2>/dev/null || true
+  wait "$srv" 2>/dev/null || true
+}
+run_case_transfer
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "全部用例通过"; else echo "有用例失败"; fi
 exit "$FAILED"

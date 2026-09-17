@@ -40,6 +40,7 @@ type Querier interface {
 	ListEmptyFoldersForPage(ctx context.Context, pageID string) ([]string, error)
 	// engines.sql - search engines (keep this file pure ASCII, see 001_init.sql header)
 	ListEngines(ctx context.Context) ([]Engine, error)
+	ListFolders(ctx context.Context) ([]Folder, error)
 	ListFoldersForPage(ctx context.Context, pageID string) ([]Folder, error)
 	// links.sql - link CRUD (keep this file pure ASCII, see 001_init.sql header)
 	ListLinks(ctx context.Context) ([]Link, error)

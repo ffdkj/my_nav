@@ -33,13 +33,15 @@ func newMediaService(t *testing.T) (*Service, context.Context, string) {
 
 	orig := filepath.Join(dir, "wallpapers", "orig")
 	thumb := filepath.Join(dir, "wallpapers", "thumb")
+	// Fetcher 传 nil：单元测试不该打外网。
+	// 注入真实 Fetcher 会让每次 PutBoard 都去抓 github.com，测试变慢且依赖网络。
 	svc := New(handle, WithMedia(
 		favicon.NewStore(filepath.Join(dir, "icons")),
 		favicon.NewStore(orig),
 		favicon.NewStore(thumb),
-		favicon.NewFetcher(nil, true),
+		nil,
 		true,
-	))
+	), WithBackupDir(filepath.Join(dir, "backup")))
 	return svc, ctx, dir
 }
 

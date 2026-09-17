@@ -23,3 +23,6 @@ SELECT f.id FROM folders f
 JOIN placements p ON p.folder_id = f.id
 WHERE p.page_id = ?
   AND NOT EXISTS (SELECT 1 FROM placements c WHERE c.in_folder = f.id);
+
+-- name: ListFolders :many
+SELECT * FROM folders ORDER BY id;

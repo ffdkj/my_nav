@@ -27,6 +27,8 @@ type Service struct {
 	Thumbs     *favicon.Store // /data/wallpapers/thumb
 	Fetcher    *favicon.Fetcher
 	Log        *slog.Logger
+	// BackupDir 是导入前快照的落盘目录（/data/backup），永久只保留一份
+	BackupDir string
 
 	// AllowPrivateFetch 同时影响图标抓取与壁纸"下载到服务器"。
 	AllowPrivateFetch bool
@@ -43,6 +45,11 @@ func WithMedia(icons, wallpapers, thumbs *favicon.Store, fetcher *favicon.Fetche
 		s.Fetcher = fetcher
 		s.AllowPrivateFetch = allowPrivate
 	}
+}
+
+// WithBackupDir 指定导入前快照目录。
+func WithBackupDir(dir string) Option {
+	return func(s *Service) { s.BackupDir = dir }
 }
 
 func WithLogger(log *slog.Logger) Option {
