@@ -34,3 +34,10 @@ FROM links l
 JOIN placements pl ON pl.link_id = l.id
 JOIN pages p ON p.id = pl.page_id
 ORDER BY l.title COLLATE NOCASE;
+
+-- name: ClearLinkIcon :exec
+UPDATE links
+SET icon_path = NULL, icon_mime = NULL, icon_w = NULL, icon_h = NULL,
+    icon_status = 'pending', icon_source = 'auto',
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE id = ?;

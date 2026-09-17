@@ -96,6 +96,8 @@ class BoardStore {
   }
 
   async selectPage(id: string) {
+    // 先把排队中的写操作落库，避免切页后它们被算到新页面上
+    await this.settled()
     this.status = 'loading'
     try {
       const board = await api.get<Board>(`/api/pages/${id}/board`)
@@ -114,6 +116,7 @@ class BoardStore {
   applyBoard(board: Board) {
     this.page = board.page
     this.revision = board.revision
+    this.#revisions.set(board.page.id, board.revision)
     const sorted: BoardItem[] = [...board.items].sort((a, b) => a.row - b.row || a.col - b.col)
     this.sequence = sorted.map((it) => ({
       id: it.id,
@@ -530,10 +533,79 @@ class BoardStore {
 
   // ---------- 提交 ----------
 
-  private async commit() {
-    if (!this.page) return
+  /**
+   * 写操作调度器：**脏标记 + 串行 + 发送时构建负载**。
+   *
+   * 这三条都是被真实故障逼出来的（加了图标抓取后 PUT 从毫秒级变成最长 3 秒，
+   * 竞态窗口被放大到必现，e2e 一次性把三个问题全暴露了）：
+   *
+   * 1) 串行：整板 PUT 带 revision，两次同时在飞时后者必然过期 → 409。
+   * 2) 负载在**发送那一刻**才构建：
+   *    - 若在"排队时"构建，负载带的是当时的 revision → 409；
+   *    - 若在"飞行期间"构建，会把已经发出去的 new_links 再声明一遍 → 422（链接已存在）。
+   *    发送时构建则天然包含全部乐观改动，且待办集合在上一次构建时已被取走，不会重复。
+   * 3) 页面绑定：构建时锁定 pageId，响应回来只在"还在这一页"时才合并，
+   *    否则会把 A 页的状态与 revision 写到 B 页。
+   */
+  #dirty = false
+  #chain: Promise<void> = Promise.resolve()
+
+  /** 每个页面的最新 revision（发送时取，而不是负载构建时）。 */
+  #revisions = new Map<string, number>()
+
+  private commit(): Promise<void> {
+    if (!this.page) return Promise.resolve()
+    this.#dirty = true
+    this.#chain = this.#chain.then(() => this.#flush())
+    return this.#chain
+  }
+
+  /** 等到所有排队中的写操作落库（切页/测试断言前调用）。 */
+  async settled(): Promise<void> {
+    await this.#chain.catch(() => {})
+  }
+
+  async #flush() {
+    while (this.#dirty) {
+      this.#dirty = false
+      if (!this.page) return
+
+      const pageId = this.page.id
+      const { payload, preexistingFolders } = this.#buildPayload()
+      // 关键：revision 在这一刻取最新值
+      payload.revision = this.#revisions.get(pageId) ?? this.revision
+
+      this.status = 'saving'
+      try {
+        const board = await api.put<Board>(`/api/pages/${pageId}/board`, payload)
+        if (this.page?.id === pageId) {
+          this.#mergeServerBoard(board, preexistingFolders)
+        }
+        this.lastError = null
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        this.lastError = message
+        ui.error('保存失败，已回到服务器状态：' + message)
+        if (this.page?.id === pageId) {
+          try {
+            await this.reload()
+          } catch {
+            /* 回读也失败时保留本地状态，toast 已经提示 */
+          }
+        }
+      } finally {
+        this.status = 'idle'
+      }
+    }
+  }
+
+  /** 构建完整负载，并把"待办集合"取走（清空）。
+   *  取走是刻意的：负载已经声明了这些实体，后续负载不该重复声明。 */
+  #buildPayload(): { payload: BoardPayload; preexistingFolders: string[] } {
     const placed = pack(this.sequence, GRID_COLS, (i) => (i.kind === 'folder' ? (i.size ?? 1) : 1))
+    const preexistingFolders = Object.keys(this.folders).filter((id) => !this.#newFolders.has(id))
     const folderIds = new Set<string>([...this.#newFolders, ...this.#touchedFolders])
+
     const payload: BoardPayload = {
       revision: this.revision,
       items: placed.map((p) => ({
@@ -560,23 +632,51 @@ class BoardStore {
       deleted_folder_ids: [...this.#deletedFolders],
     }
 
-    this.status = 'saving'
-    try {
-      const board = await api.put<Board>(`/api/pages/${this.page.id}/board`, payload)
-      this.applyBoard(board)
-      this.lastError = null
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      this.lastError = message
-      ui.error('保存失败，已回到服务器状态：' + message)
-      // 回读是唯一永远正确的回滚方式（服务端才有权威 revision）
-      try {
-        await this.reload()
-      } catch {
-        /* 回读也失败时保留本地状态，toast 已经提示 */
+    this.#newLinks.clear()
+    this.#newFolders.clear()
+    this.#touchedFolders.clear()
+    this.#deletedLinks.clear()
+    this.#deletedFolders.clear()
+
+    return { payload, preexistingFolders }
+  }
+
+  /**
+   * 提交成功后**合并**服务端响应，而不是整块替换。
+   *
+   * 布局由客户端声明式提交（客户端才是布局的事实源），响应只是"提交那一刻"的服务端快照。
+   * 若直接换成快照，这 1~3 秒（含图标抓取）里用户新加的图标会被静默抹掉。
+   * 所以只吸收服务端独有的信息：revision、抓取结果、以及服务端自动清理（空夹）的删除。
+   */
+  #mergeServerBoard(board: Board, preexistingFolders: string[]) {
+    this.page = board.page
+    this.revision = board.revision
+    this.#revisions.set(board.page.id, board.revision)
+
+    const serverLinks = new Map(board.links.map((l) => [l.id, l]))
+    for (const [id, local] of Object.entries(this.links)) {
+      const remote = serverLinks.get(id)
+      if (!remote) continue
+      // 只覆盖服务端能给出的字段，本地正在编辑的标题/URL 不被回滚
+      this.links[id] = {
+        ...local,
+        icon_source: remote.icon_source,
+        icon_path: remote.icon_path,
+        icon_status: remote.icon_status,
+        mono_text: remote.mono_text,
+        mono_color: remote.mono_color,
+        mono_font_size: remote.mono_font_size,
       }
-    } finally {
-      this.status = 'idle'
+    }
+
+    // 服务端自动删除的空文件夹：本地也要跟着消失，否则那块会永远点不开。
+    // ⚠️ 只针对"这次请求之前服务端就已知"的文件夹：若拿旧快照去判断期间新建的文件夹，
+    // 会把它们误删，排队中的下次提交随即发出空布局 —— 整页图标凭空消失。
+    const serverFolderIds = new Set(board.folders.map((f) => f.id))
+    for (const id of preexistingFolders) {
+      if (serverFolderIds.has(id)) continue
+      delete this.folders[id]
+      this.sequence = this.sequence.filter((i) => i.folder_id !== id)
     }
   }
 

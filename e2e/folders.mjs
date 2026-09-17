@@ -24,6 +24,18 @@ async function board() {
 const folderItems = (b) => b.items.filter((i) => i.kind === 'folder')
 const linkItems = (b) => b.items.filter((i) => i.kind === 'link')
 
+
+/** 等所有排队中的提交落库（UI 的"保存中…"消失）。
+ *  加了图标抓取后单次 PUT 可能等上几秒，且提交是串行的，
+ *  因此"UI 出现图块"不等于"服务端已保存"——断言服务端状态前必须等这个。 */
+async function waitSaved(page, timeout = 20_000) {
+  await page.waitForFunction(
+    () => !document.body.innerText.includes('保存中'),
+    null,
+    { timeout },
+  )
+}
+
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 const consoleErrors = []
@@ -73,6 +85,7 @@ try {
   await page.mouse.up()
   await page.waitForTimeout(900)
 
+  await waitSaved(page)
   let bd = await board()
   const folders = folderItems(bd)
   check('合并后生成 1 个文件夹', folders.length === 1, `folders=${folders.length}`)
@@ -98,6 +111,7 @@ try {
   // ---- 4) 移出到主网格 ----
   await page.locator('button[aria-label="移出到主网格"]').first().click()
   await page.waitForTimeout(700)
+  await waitSaved(page)
   bd = await board()
   check(
     '移出后夹内剩 1 个、主网格多 1 个',

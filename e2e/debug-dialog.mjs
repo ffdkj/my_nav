@@ -1,0 +1,33 @@
+import { chromium } from 'playwright'
+const BASE = process.env.NAV_BASE
+const browser = await chromium.launch()
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+page.on('pageerror', (e) => console.log('PAGEERROR:', e.message.split('\n')[0]))
+await page.goto(BASE, { waitUntil: 'networkidle' })
+// 先加一个链接（目标站点由调用方保证可达）
+await page.getByRole('button', { name: '添加图标' }).click()
+await page.fill('#link-url-input', process.env.SITE_URL)
+await page.getByPlaceholder('例如 GitHub').fill('Local Site')
+await page.getByRole('button', { name: '确定' }).click()
+await page.waitForTimeout(2500)
+const pencil = page.locator('ul[aria-label="导航图标"] > li').first().locator('button[aria-label^="编辑"]')
+console.log('pencil count =', await pencil.count())
+const box = await pencil.boundingBox()
+console.log('pencil box =', JSON.stringify(box))
+const topEl = await page.evaluate(([x, y]) => {
+  const el = document.elementFromPoint(x, y)
+  return el ? el.tagName + '.' + (el.className || '').toString().slice(0, 60) : 'none'
+}, [box.x + box.width / 2, box.y + box.height / 2])
+console.log('指针位置的顶层元素 =', topEl)
+await pencil.click({ force: true })
+await page.waitForTimeout(600)
+console.log('form 数量 =', await page.locator('form').count())
+console.log('form aria-label =', await page.locator('form').first().getAttribute('aria-label').catch(() => 'n/a'))
+console.log('按钮文本 =', JSON.stringify((await page.locator('form').first().innerText().catch(() => '')).slice(0, 300)))
+const html = await page.locator('form').first().innerHTML()
+console.log('--- 是否含 fieldset:', html.includes('<fieldset'))
+console.log('--- 是否含 重新抓取:', html.includes('重新抓取'))
+console.log('--- 是否含 tab:', html.includes('role="tab"'))
+console.log('--- URL 输入框的值:', await page.locator('#link-url-input').inputValue().catch(() => 'n/a'))
+console.log('--- HTML 片段:', html.slice(0, 400).replace(/\s+/g, ' '))
+await browser.close()

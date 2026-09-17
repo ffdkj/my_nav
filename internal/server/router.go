@@ -39,6 +39,11 @@ func New(cfg config.Config, svc *nav.Service) http.Handler {
 
 	r.Get("/healthz", s.health)
 
+	// 图标是内容寻址的静态文件，不经过 /api。
+	// HEAD 也要显式注册：chi 的 Get 只匹配 GET，HEAD 会掉进 SPA 回退（返回 HTML）。
+	r.Get("/icons/*", s.h.serveIcon)
+	r.Head("/icons/*", s.h.serveIcon)
+
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/bootstrap", s.h.bootstrap)
 		api.Get("/settings", s.h.getSettings)
@@ -46,6 +51,10 @@ func New(cfg config.Config, svc *nav.Service) http.Handler {
 		api.Post("/board/move", s.h.moveItem)
 		api.Get("/links", s.h.listLinks)
 		api.Patch("/links/{linkID}", s.h.updateLink)
+		api.Post("/links/{linkID}/icon/refetch", s.h.refetchIcon)
+		api.Post("/links/{linkID}/icon/reset", s.h.resetIcon)
+		api.Post("/links/{linkID}/icon/upload", s.h.uploadIcon)
+		api.Post("/links/{linkID}/icon/monogram", s.h.setMonogram)
 
 		api.Route("/pages", func(pages chi.Router) {
 			pages.Get("/", s.h.listPages)

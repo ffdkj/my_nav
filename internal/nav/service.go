@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"net/url"
 	"strings"
 
 	"github.com/ffdkj/my_nav/internal/db/dbgen"
+	"github.com/ffdkj/my_nav/internal/favicon"
 )
 
 // Service 是领域层入口。它持有一个 *sql.DB 以便开启事务：
@@ -17,10 +19,31 @@ import (
 type Service struct {
 	DB *sql.DB
 	Q  *dbgen.Queries
+
+	// 图标抓取与存储。为 nil 时相关功能降级（返回 503 / 跳过抓取），
+	// 这样不关心图标的单元测试可以直接 New(db)。
+	Icons   *favicon.Store
+	Fetcher *favicon.Fetcher
+	Log     *slog.Logger
 }
 
-func New(db *sql.DB) *Service {
-	return &Service{DB: db, Q: dbgen.New(db)}
+type Option func(*Service)
+
+// WithIcons 注入图标存储与抓取器。
+func WithIcons(store *favicon.Store, fetcher *favicon.Fetcher) Option {
+	return func(s *Service) { s.Icons = store; s.Fetcher = fetcher }
+}
+
+func WithLogger(log *slog.Logger) Option {
+	return func(s *Service) { s.Log = log }
+}
+
+func New(db *sql.DB, opts ...Option) *Service {
+	svc := &Service{DB: db, Q: dbgen.New(db)}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 // ---------- bootstrap ----------
@@ -409,6 +432,9 @@ func (s *Service) PutBoard(ctx context.Context, pageID string, payload *BoardPay
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit board: %w", err)
 	}
+
+	// 事务提交之后再抓图标：抓取是网络 I/O，放在事务里会一直握着 SQLite 写锁
+	s.refreshIconsForPage(ctx, pageID)
 
 	return s.GetBoard(ctx, pageID)
 }

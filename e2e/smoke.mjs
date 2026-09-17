@@ -29,6 +29,18 @@ async function boardItems() {
     .map((i) => ({ id: i.id, col: i.col, row: i.row, link: i.link_id }))
 }
 
+
+/** 等所有排队中的提交落库（UI 的"保存中…"消失）。
+ *  加了图标抓取后单次 PUT 可能等上几秒，且提交是串行的，
+ *  因此"UI 出现图块"不等于"服务端已保存"——断言服务端状态前必须等这个。 */
+async function waitSaved(page, timeout = 20_000) {
+  await page.waitForFunction(
+    () => !document.body.innerText.includes('保存中'),
+    null,
+    { timeout },
+  )
+}
+
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 
@@ -67,6 +79,7 @@ try {
     await page.getByRole('button', { name: '确定' }).click()
     await page.getByRole('link', { name: new RegExp(seed.title) }).waitFor({ timeout: 10_000 })
   }
+  await waitSaved(page)
   const afterAdd = await boardItems()
   check('UI 新增三个链接并落库', afterAdd.length === 3, `items=${afterAdd.length}`)
   await page.screenshot({ path: '.e2e/shot-01-grid.png' })
@@ -88,6 +101,7 @@ try {
   await page.mouse.up()
   await page.waitForTimeout(900)
 
+  await waitSaved(page)
   const afterDrag = await boardItems()
   check('拖拽后顺序发生变化', JSON.stringify(afterDrag) !== JSON.stringify(afterAdd))
   await page.screenshot({ path: '.e2e/shot-02-after-drag.png' })

@@ -9,6 +9,19 @@ import (
 	"context"
 )
 
+const clearLinkIcon = `-- name: ClearLinkIcon :exec
+UPDATE links
+SET icon_path = NULL, icon_mime = NULL, icon_w = NULL, icon_h = NULL,
+    icon_status = 'pending', icon_source = 'auto',
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE id = ?
+`
+
+func (q *Queries) ClearLinkIcon(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, clearLinkIcon, id)
+	return err
+}
+
 const createLink = `-- name: CreateLink :exec
 INSERT INTO links (
   id, title, url, open_new_tab, icon_source, icon_path, icon_mime, icon_w, icon_h,

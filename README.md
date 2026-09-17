@@ -107,6 +107,22 @@ docs/               规格书与技术调研
    而 `//go:embed` 在目录不存在时是**编译失败**——新克隆会直接 build 不过。
    已在 npm `build` 脚本里构建后补回占位文件。
 
+### 图标抓取与 `NAV_ALLOW_PRIVATE_FETCH`
+
+图标抓取链：Google `faviconV2` → DuckDuckGo `ip3` → 自建 HTML 发现（`<link rel="icon">` / `apple-touch-icon`）→ `/favicon.ico` → 纯色文字兜底。
+
+抓取是**服务端代取用户填写的 URL**，所以默认开启 SSRF 防护（拨号层校验真实 IP，挡回环/私网/链路本地地址）。
+代价是：书签里那些 `http://192.168.x.x` 的内网服务（路由器、NAS、自建面板）永远抓不到图标。
+
+需要的话显式打开：
+
+```bash
+NAV_ALLOW_PRIVATE_FETCH=1     # 仅在你信任 tailnet 边界、且确实要给内网书签配图标时
+```
+
+打开后回环与私网地址都会允许 —— 这是拿 SSRF 防护换可用性，请自行按威胁模型取舍。
+（e2e 的图标用例就是靠这个开关指向本地站点，从而在不依赖外网的情况下覆盖完整的 HTML 发现链路。）
+
 ### 环境依赖
 
 - `make`（本项目的命令入口；若你的机器没有，直接看 Makefile 里的等价命令）

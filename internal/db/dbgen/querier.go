@@ -10,6 +10,7 @@ import (
 
 type Querier interface {
 	BumpPageRevision(ctx context.Context, id string) (int64, error)
+	ClearLinkIcon(ctx context.Context, id string) error
 	CountPages(ctx context.Context) (int64, error)
 	CountPlacementsInFolder(ctx context.Context, inFolder *string) (int64, error)
 	// folders.sql - folder CRUD (keep this file pure ASCII, see 001_init.sql header)

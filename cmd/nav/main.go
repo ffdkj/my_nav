@@ -16,6 +16,7 @@ import (
 
 	"github.com/ffdkj/my_nav/internal/config"
 	"github.com/ffdkj/my_nav/internal/db"
+	"github.com/ffdkj/my_nav/internal/favicon"
 	"github.com/ffdkj/my_nav/internal/migrate"
 	"github.com/ffdkj/my_nav/internal/nav"
 	"github.com/ffdkj/my_nav/internal/server"
@@ -86,8 +87,11 @@ func run() error {
 	slog.Info("database ready", "path", cfg.DBPath(), "schema_version", version)
 
 	srv := &http.Server{
-		Addr:              cfg.Addr,
-		Handler:           server.New(cfg, nav.New(handle)),
+		Addr: cfg.Addr,
+		Handler: server.New(cfg, nav.New(handle,
+			nav.WithIcons(favicon.NewStore(cfg.IconsDir()), favicon.NewFetcher(slog.Default(), cfg.AllowPrivateFetch)),
+			nav.WithLogger(slog.Default()),
+		)),
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,

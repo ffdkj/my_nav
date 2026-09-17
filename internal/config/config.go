@@ -18,14 +18,21 @@ type Config struct {
 	LogLevel slog.Level
 	// DevMode 打开后允许更宽松的日志与调试端点。
 	DevMode bool
+	// AllowPrivateFetch 允许抓取内网/回环地址上的图标。
+	//
+	// 默认关闭：抓取的是用户填写的 URL，服务端代取，必须防 SSRF。
+	// 但对**自托管个人导航**来说，书签里经常就是 http://192.168.x.x 这类内网服务，
+	// 开着防护它们永远拿不到图标。所以给一个显式开关，由部署者按自己的威胁模型决定。
+	AllowPrivateFetch bool
 }
 
 func Load() Config {
 	cfg := Config{
-		Addr:     env("NAV_ADDR", ":8080"),
-		DataDir:  env("NAV_DATA_DIR", "./data"),
-		LogLevel: parseLevel(env("NAV_LOG_LEVEL", "info")),
-		DevMode:  env("NAV_DEV", "") != "",
+		Addr:              env("NAV_ADDR", ":8080"),
+		DataDir:           env("NAV_DATA_DIR", "./data"),
+		LogLevel:          parseLevel(env("NAV_LOG_LEVEL", "info")),
+		DevMode:           env("NAV_DEV", "") != "",
+		AllowPrivateFetch: env("NAV_ALLOW_PRIVATE_FETCH", "") != "",
 	}
 	return cfg
 }
