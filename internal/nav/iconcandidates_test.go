@@ -39,6 +39,11 @@ func iconSite(t *testing.T) (*httptest.Server, *int32) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(icon)
 	})
+	// 同一份字节也挂在 /favicon.ico：自动链路能抓到，而候选侧应当被内容去重
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(icon)
+	})
 	site := httptest.NewServer(mux)
 	t.Cleanup(site.Close)
 	return site, &hits
@@ -170,7 +175,11 @@ func TestIconCandidatesStoresBytesAndPickApplies(t *testing.T) {
 		t.Error("改网址后 icon_picked_url 被清空了")
 	}
 
-	// 主动重新抓取 = 覆盖手选（本地站点没有 favicon.ico → miss）
+	// 改回原网址（上一步是为了验"改 URL 不抹掉手选"才改的），
+	// 然后再验证"重新抓取 = 覆盖手选"：站点自己的 apple-touch-icon 会被自建发现拿到
+	if _, err := svc.UpdateLinkFields(ctx, "l-1", UpdateLinkInput{URL: ptr(site.URL)}); err != nil {
+		t.Fatalf("UpdateLinkFields(back): %v", err)
+	}
 	refetched, err := svc.FetchAndStoreIcon(ctx, "l-1")
 	if err != nil {
 		t.Fatalf("FetchAndStoreIcon: %v", err)
@@ -178,8 +187,39 @@ func TestIconCandidatesStoresBytesAndPickApplies(t *testing.T) {
 	if refetched.IconPickedURL != nil {
 		t.Errorf("重新抓取后 icon_picked_url 应为空，got %v", *refetched.IconPickedURL)
 	}
-	if refetched.IconStatus != "miss" {
-		t.Errorf("本地站点没有图标，状态应为 miss，got %s", refetched.IconStatus)
+	if refetched.IconStatus != "ok" {
+		t.Errorf("状态 = %s, want ok", refetched.IconStatus)
+	}
+	// 自动路径同样要把 mime/尺寸落库：前端要靠 icon_w 判断"这张放大到 96px 会不会糊"
+	if refetched.IconMime == nil || *refetched.IconMime != "image/png" {
+		t.Errorf("icon_mime = %v, want image/png", refetched.IconMime)
+	}
+	if refetched.IconW == nil || *refetched.IconW != 180 || refetched.IconH == nil || *refetched.IconH != 180 {
+		t.Errorf("自动抓取的尺寸 = %v x %v, want 180x180", refetched.IconW, refetched.IconH)
+	}
+	if refetched.IconPath == nil || *refetched.IconPath == c.IconPath {
+		// 内容寻址：同一份字节 → 同一个路径，这是对的
+		t.Logf("自动重抓落回同一份字节（内容寻址去重）：%v", refetched.IconPath)
+	}
+
+	// 全局搜索那份扁平 DTO（/api/links）必须带上同样的图标元数据。
+	// 这里漏过一次：LinkDTO 加了字段、LinkWithPageDTO 忘了同步，
+	// 表现为 board 接口正常而搜索索引里 icon_mime/icon_w 永远是 null。
+	all, err := svc.ListAllLinks(ctx)
+	if err != nil {
+		t.Fatalf("ListAllLinks: %v", err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("ListAllLinks = %d 行, want 1", len(all))
+	}
+	if all[0].IconMime == nil || *all[0].IconMime != "image/png" {
+		t.Errorf("搜索索引里的 icon_mime = %v, want image/png", all[0].IconMime)
+	}
+	if all[0].IconW == nil || *all[0].IconW != 180 {
+		t.Errorf("搜索索引里的 icon_w = %v, want 180", all[0].IconW)
+	}
+	if all[0].PageSlug == "" {
+		t.Error("搜索索引必须带所属页面信息")
 	}
 }
 

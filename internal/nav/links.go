@@ -39,6 +39,12 @@ func (s *Service) ListAllLinks(ctx context.Context) ([]LinkWithPageDTO, error) {
 				MonoText:     r.MonoText,
 				MonoColor:    r.MonoColor,
 				MonoFontSize: r.MonoFontSize,
+				// 与 toLinkDTO 保持同步：这里漏掉过一次，表现为 /api/links 的
+				// icon_mime/icon_w/icon_h 永远是 null，而 board 接口是好的
+				IconMime:      r.IconMime,
+				IconW:         r.IconW,
+				IconH:         r.IconH,
+				IconPickedURL: r.IconPickedUrl,
 			},
 			PageID:   r.PageID,
 			PageSlug: r.PageSlug,
