@@ -92,10 +92,17 @@ docker ps --filter name=my_nav --format '{{.Status}}\t{{.Ports}}'
 ## 3. 升级 / 回滚
 
 ```bash
+# 0) 先等镜像构建完（不必登 ghcr、不必装 docker；tag 缺省从 deploy/compose.yaml 读）
+deploy/wait-image.sh 0.2.0     # READY 之后再去主机上拉，否则会拉到 MANIFEST_UNKNOWN
+
 cd /opt/1panel/docker/compose/my_nav
-sudo sed -i 's|^    image: .*|    image: ghcr.io/ffdkj/my_nav:0.2.0|' compose.yaml   # 或改 .env 里的版本
+# 注意：这台主机上这个 1Panel compose 项目的文件名是 docker-compose.yml（仓库里叫 compose.yaml）
+sudo sed -i 's|^    image: .*|    image: ghcr.io/ffdkj/my_nav:0.2.0|' docker-compose.yml
 sudo docker compose pull && sudo docker compose up -d
 ```
+
+在 1Panel 面板里改也行：容器 → 编排 → my_nav → 编辑，把 `image:` 的 tag 换掉后保存，
+面板会自己 `up -d` 重建容器（实测约 3 秒）。
 
 回滚就是把 `image:` 改回旧版本号再 `up -d`。
 **数据库 schema 变更只在启动时向前迁移**，所以回滚到旧镜像前请先按第 4 节导出一份。
