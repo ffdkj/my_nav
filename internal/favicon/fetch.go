@@ -36,6 +36,10 @@ const userAgent = "my_nav/1.0 (+personal navigator)"
 // smallIconPx 以下认为"太小，值得再做一次自建发现"。
 const smallIconPx = 64
 
+// probeTimeout 是"外部图标服务"（Google / DuckDuckGo）单步的时间上限，
+// 目的是给**自建发现**留出预算，见 (*Fetcher).probe 的说明。
+const probeTimeout = 700 * time.Millisecond
+
 type Result struct {
 	Data   []byte
 	Mime   string
@@ -87,13 +91,17 @@ func (f *Fetcher) Fetch(ctx context.Context, pageURL string) (*Result, error) {
 	origin := target.Scheme + "://" + target.Host
 
 	// 1) Google
-	googleResult, googleErr := f.google(ctx, pageURL)
+	googleResult, googleErr := f.probe(ctx, func(c context.Context) (*Result, error) {
+		return f.google(c, pageURL)
+	})
 	if googleErr == nil && googleResult.Width >= smallIconPx {
 		return googleResult, nil
 	}
 
 	// 2) DuckDuckGo
-	if r, err := f.ddg(ctx, target.Host); err == nil && r.Width >= smallIconPx {
+	if r, err := f.probe(ctx, func(c context.Context) (*Result, error) {
+		return f.ddg(c, target.Host)
+	}); err == nil && r.Width >= smallIconPx {
 		return r, nil
 	}
 
@@ -113,6 +121,19 @@ func (f *Fetcher) Fetch(ctx context.Context, pageURL string) (*Result, error) {
 		f.log.Debug("favicon miss", "url", pageURL)
 	}
 	return nil, ErrNoIcon
+}
+
+// probe 给"外部图标服务"（Google / DuckDuckGo）套一层单步限时。
+//
+// 为什么必须有：总预算只有 3s（nav.iconFetchTimeout），而这两步都是外网请求。
+// 实测 DuckDuckGo 会偶发 TLS 重置并一路挂到 5s —— 预算被它吃光后，
+// **自建发现**（第 3 步，也是本地/局域网站点唯一的出路）连一个请求都发不出去，
+// 于是"首页明明声明了 apple-touch-icon"却记成 miss。
+// 单步限时之后，第 3 步总能拿到剩下的 1.5s 以上。
+func (f *Fetcher) probe(ctx context.Context, fn func(context.Context) (*Result, error)) (*Result, error) {
+	cctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	return fn(cctx)
 }
 
 func (f *Fetcher) google(ctx context.Context, pageURL string) (*Result, error) {

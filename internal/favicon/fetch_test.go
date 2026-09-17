@@ -163,6 +163,49 @@ func TestFetchReturnsNoIconWhenEverythingMisses(t *testing.T) {
 	}
 }
 
+// 外网那两步不能把预算吃光，否则"自建发现"（本地/局域网站点唯一的出路）永远轮不到。
+//
+// 真实触发：DuckDuckGo 偶发 TLS 重置并一路挂到 5s，而总预算只有 3s，
+// 于是首页明明声明了 apple-touch-icon 也被记成 miss（e2e/icons.mjs 因此变红）。
+func TestFetchReservesBudgetForDiscovery(t *testing.T) {
+	big := makePNG(t, 180)
+
+	// 两个"外部服务"都挂住不响应，直到客户端放弃
+	hang := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer hang.Close()
+
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/big.png" {
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(big)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><head>
+			<link rel="apple-touch-icon" sizes="180x180" href="/big.png">
+			</head></html>`))
+	}))
+	defer site.Close()
+
+	f := NewFetcherWithEndpoints(hang.URL, hang.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	res, err := f.Fetch(ctx, site.URL)
+	if err != nil {
+		t.Fatalf("Fetch: %v（预算被外部两步吃光了？）", err)
+	}
+	if res.Source != "discovered" || res.Width != 180 {
+		t.Errorf("got source=%s %dx%d, want discovered 180x180", res.Source, res.Width, res.Height)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("耗时 %v：单步限时没生效", elapsed)
+	}
+}
+
 // 传送门必须关死：默认 fetcher 不许连私网/回环地址。
 func TestFetchBlocksPrivateAddresses(t *testing.T) {
 	icon := makePNG(t, 64)
