@@ -1,11 +1,20 @@
--- 001_init.sql — my_nav 初始 schema（对应 docs/spec.md §5.2）
--- 约定：主键为客户端生成的 UUIDv7 文本；时间戳为 ISO8601 UTC。
+-- 001_init.sql - initial schema for my_nav (see docs/spec.md 5.2)
+--
+-- CONVENTION: keep this file pure ASCII.
+-- sqlc v1.31.1's SQLite parser silently truncates tokens when the .sql file
+-- contains multi-byte UTF-8 characters (verified: 1072 non-ASCII bytes -> 8 bogus
+-- syntax errors; 0 bytes -> clean generation). Put prose in Go comments instead.
+--
+-- Primary keys are client-generated UUIDv7 text; timestamps are ISO8601 UTC.
 
 CREATE TABLE pages (
   id             TEXT PRIMARY KEY,
   slug           TEXT NOT NULL UNIQUE,
   name           TEXT NOT NULL,
   sort_order     INTEGER NOT NULL,
+  -- optimistic concurrency for declarative whole-board PUT: client sends the
+  -- revision it read; a mismatch is rejected with 409
+  revision       INTEGER NOT NULL DEFAULT 0,
   wallpaper_mode TEXT NOT NULL DEFAULT 'global' CHECK (wallpaper_mode IN ('global','custom')),
   wallpaper_id   TEXT,
   created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -39,9 +48,9 @@ CREATE TABLE folders (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
--- placements 是"位置"的唯一事实源：
---   in_folder IS NULL  -> 该 placement 位于页面上，位置由 (col,row) 决定
---   in_folder NOT NULL -> 该 placement 是某文件夹的子项，顺序由 sort_order 决定（col/row 无意义）
+-- placements is the single source of truth for "where something sits":
+--   in_folder IS NULL  -> the item sits on a page; position is (col,row)
+--   in_folder NOT NULL -> the item lives inside that folder; order is sort_order
 CREATE TABLE placements (
   id         TEXT PRIMARY KEY,
   page_id    TEXT NOT NULL REFERENCES pages(id)   ON DELETE CASCADE,
@@ -52,7 +61,7 @@ CREATE TABLE placements (
   row        INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
   CHECK ((link_id IS NULL) <> (folder_id IS NULL)),
-  CHECK (folder_id IS NULL OR in_folder IS NULL)  -- 禁止文件夹嵌套
+  CHECK (folder_id IS NULL OR in_folder IS NULL)  -- folders can never nest
 );
 
 CREATE INDEX idx_place_page   ON placements(page_id, in_folder);
@@ -86,28 +95,28 @@ CREATE TABLE settings (
   v TEXT NOT NULL
 );
 
--- 内置搜索引擎（spec §1 决策 16；id 固定，便于导入导出对齐）
+-- Built-in search engines (ids are stable so export/import can reference them)
 INSERT INTO engines (id, name, url_tpl, icon_text, icon_color, sort_order, is_builtin) VALUES
-  ('eng-google', '谷歌',   'https://www.google.com/search?q={query}', 'G',  '#4285F4', 10, 1),
-  ('eng-bing',   '必应',   'https://www.bing.com/search?q={query}',   'b',  '#0F7B6C', 20, 1),
-  ('eng-baidu',  '百度',   'https://www.baidu.com/s?wd={query}',      '百', '#2932E1', 30, 1),
-  ('eng-ddgo',   'DuckDuckGo', 'https://duckduckgo.com/?q={query}',   'D',  '#DE5833', 40, 1),
-  ('eng-sogou',  '搜狗',   'https://www.sogou.com/web?query={query}', 'S',  '#FD6C1C', 50, 1),
-  ('eng-youdao', '有道',   'https://www.youdao.com/result?word={query}', '有', '#D93B3B', 60, 1);
+  ('eng-google', 'Google',     'https://www.google.com/search?q={query}', 'G', '#4285F4', 10, 1),
+  ('eng-bing',   'Bing',       'https://www.bing.com/search?q={query}',   'b', '#0F7B6C', 20, 1),
+  ('eng-baidu',  'Baidu',      'https://www.baidu.com/s?wd={query}',      'B', '#2932E1', 30, 1),
+  ('eng-ddgo',   'DuckDuckGo', 'https://duckduckgo.com/?q={query}',       'D', '#DE5833', 40, 1),
+  ('eng-sogou',  'Sogou',      'https://www.sogou.com/web?query={query}', 'S', '#FD6C1C', 50, 1),
+  ('eng-youdao', 'Youdao',     'https://www.youdao.com/result?word={query}', 'Y', '#D93B3B', 60, 1);
 
--- 默认设置
+-- Default settings
 INSERT INTO settings (k, v) VALUES
-  ('default_engine_id',    'eng-google'),
-  ('merge_dwell_ms',       '500'),
-  ('page_flip_edge_ms',    '150'),
-  ('wallpaper_mode',       'global'),
-  ('wallpaper_id',         ''),
-  ('wallpaper_rotation',   'off'),
+  ('default_engine_id',     'eng-google'),
+  ('merge_dwell_ms',        '500'),
+  ('page_flip_edge_ms',     '150'),
+  ('wallpaper_mode',        'global'),
+  ('wallpaper_id',          ''),
+  ('wallpaper_rotation',    'off'),
   ('wallpaper_interval_min','30'),
-  ('wallpaper_fallback',   '#0b1220'),
-  ('search_open_new_tab',  '1'),
-  ('theme',                'dark');
+  ('wallpaper_fallback',    '#0b1220'),
+  ('search_open_new_tab',   '1'),
+  ('theme',                 'dark');
 
--- 一个初始页面（首次运行的落地页）
+-- The landing page created on first run
 INSERT INTO pages (id, slug, name, sort_order, wallpaper_mode) VALUES
-  ('page-home', 'home', '主页', 0, 'global');
+  ('page-home', 'home', 'Home', 0, 'global');

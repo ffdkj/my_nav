@@ -3,9 +3,28 @@ SHELL := /bin/bash
 WEB   := web
 BIN   := bin/nav
 
+# 开发期工具链：固定版本，装在仓库内 .tools/（不入库）
+SQLC_VERSION := 1.31.1
+SQLC         := .tools/sqlc
+
 .PHONY: help
 help: ## 显示所有可用目标
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+
+.PHONY: tools
+tools: $(SQLC) ## 下载开发期工具（sqlc）
+$(SQLC):
+	@mkdir -p .tools
+	curl -sSL -o .tools/sqlc.tar.gz \
+	  https://github.com/sqlc-dev/sqlc/releases/download/v$(SQLC_VERSION)/sqlc_$(SQLC_VERSION)_linux_amd64.tar.gz
+	tar xzf .tools/sqlc.tar.gz -C .tools sqlc
+	rm -f .tools/sqlc.tar.gz
+	@$(SQLC) version
+
+.PHONY: generate
+generate: $(SQLC) ## 由 SQL 重新生成 internal/db/dbgen（生成物入库，CI 不需要 sqlc）
+	$(SQLC) generate
+	@echo "提示：生成物已入库，构建镜像时无需安装 sqlc。"
 
 .PHONY: setup
 setup: web-install ## 安装前后端依赖
@@ -54,7 +73,6 @@ test: ## 跑 Go 测试
 .PHONY: fmt
 fmt: ## 格式化
 	gofmt -l -w cmd internal
-	npm --prefix $(WEB) exec prettier --write "src/**/*.{ts,svelte,css}" 2>/dev/null || true
 
 .PHONY: clean
 clean: ## 清理构建产物（保留 .gitkeep）

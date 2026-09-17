@@ -1,0 +1,19 @@
+# sqlc 配置（v2）。要点均来自实测（见 docs/research/02-backend-go-sqlc-docker.md）：
+#   - engine 字符串是 "sqlite"（没有 sqlc.sqlite 这种写法）；sqlc 的 SQLite 支持官方标为 Beta
+#   - schema 指向迁移目录：sqlc 只解析、不执行；纯 .sql 无工具标记也能解析
+#   - sql_package=database/sql 才能和 modernc.org/sqlite 驱动配对
+#   - emit_pointers_for_null_types 在 v2 配置 + sqlite 下确实生效（v1 文档说只支持 pgx，是过期说法）
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "internal/migrate/migrations"
+    queries: "internal/db/sql/query"
+    gen:
+      go:
+        package: "dbgen"
+        out: "internal/db/dbgen"
+        sql_package: "database/sql"
+        emit_json_tags: true
+        emit_empty_slices: true
+        emit_interface: true
+        emit_pointers_for_null_types: true

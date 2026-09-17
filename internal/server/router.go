@@ -17,16 +17,18 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/ffdkj/my_nav/internal/config"
+	"github.com/ffdkj/my_nav/internal/nav"
 	"github.com/ffdkj/my_nav/internal/web"
 )
 
 type server struct {
 	cfg config.Config
+	h   *handlers
 }
 
 // New 返回装配好的根 handler。
-func New(cfg config.Config) http.Handler {
-	s := &server{cfg: cfg}
+func New(cfg config.Config, svc *nav.Service) http.Handler {
+	s := &server{cfg: cfg, h: &handlers{svc: svc}}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -38,7 +40,19 @@ func New(cfg config.Config) http.Handler {
 	r.Get("/healthz", s.health)
 
 	r.Route("/api", func(api chi.Router) {
-		api.Get("/bootstrap", s.bootstrap)
+		api.Get("/bootstrap", s.h.bootstrap)
+
+		api.Route("/pages", func(pages chi.Router) {
+			pages.Get("/", s.h.listPages)
+			pages.Post("/", s.h.createPage)
+			// 前端 URL 用 #/p/<slug>，所以需要一个按 slug 解析页面的入口
+			pages.Get("/by-slug/{slug}", s.h.resolvePageSlug)
+			pages.Get("/{pageID}/board", s.h.getBoard)
+			pages.Put("/{pageID}/board", s.h.putBoard)
+			pages.Patch("/{pageID}", s.h.updatePage)
+			pages.Delete("/{pageID}", s.h.deletePage)
+		})
+
 		// 保持最后注册：任何未匹配的 /api 路径都返回 JSON 404。
 		api.NotFound(jsonNotFound)
 		api.HandleFunc("/*", jsonNotFound)
@@ -57,20 +71,8 @@ func (s *server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-// bootstrap 在 M0 只是一个可用的空壳（M1 接入 sqlc 查询后填充真实数据）。
-func (s *server) bootstrap(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"pages":    []any{},
-		"settings": map[string]string{},
-		"engines":  []any{},
-		"revision": 0,
-	})
-}
-
 func jsonNotFound(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusNotFound, map[string]any{
-		"error": map[string]string{"code": "not_found", "message": "no such API route"},
-	})
+	writeJSON(w, http.StatusNotFound, errorBody("not_found", "no such API route"))
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

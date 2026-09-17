@@ -6,7 +6,7 @@ node_modules/
 *.tsbuildinfo
 
 # 前端产物由 go:embed 消费（CI/Docker 会重新构建），只保留占位文件。
-# 注意：这里必须用 internal/web/dist/* 而不是裸的 dist/，
+# 注意：必须用 internal/web/dist/* 而不是裸的 dist/，
 # 否则目录本身被排除后，! 规则无法把它里面的 .gitkeep 救回来。
 internal/web/dist/*
 !internal/web/dist/.gitkeep
@@ -34,10 +34,16 @@ coverage.*
 .vscode/*
 !.vscode/extensions.json
 
-# --- 工具缓存（本沙箱里 ~/.npm 与 GOPATH 不可写，缓存放仓库内）---
+# --- 工具链与本地缓存 ---
+# .tools 放 sqlc 等开发期二进制（make tools 自动下载，约 56MB，不入库）
+.tools/
 .npm-cache/
 .gocache/
 .gomodcache/
 .gopath/
+
+# --- 临时/验证目录 ---
+.scratch/
+.smoke/
 .research/
 _research_verify/

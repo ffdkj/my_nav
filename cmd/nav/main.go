@@ -17,6 +17,7 @@ import (
 	"github.com/ffdkj/my_nav/internal/config"
 	"github.com/ffdkj/my_nav/internal/db"
 	"github.com/ffdkj/my_nav/internal/migrate"
+	"github.com/ffdkj/my_nav/internal/nav"
 	"github.com/ffdkj/my_nav/internal/server"
 )
 
@@ -86,7 +87,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           server.New(cfg),
+		Handler:           server.New(cfg, nav.New(handle)),
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
