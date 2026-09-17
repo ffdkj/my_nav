@@ -303,10 +303,21 @@ func (s *Service) PutBoard(ctx context.Context, pageID string, payload *BoardPay
 		}
 	}
 
+	// new_folders 的语义是 upsert：不存在则建，存在则更新名字/尺寸。
+	// 前端因此可以在"把 1 格夹放大成 2x2"时复用同一个字段，不需要额外的更新端点。
 	for _, f := range payload.NewFolders {
 		size := f.Size
 		if size == 0 {
 			size = 1
+		}
+		if size != 1 && size != 2 {
+			return nil, BadRequest("folder size must be 1 or 2")
+		}
+		if _, exists := knownFolders[f.ID]; exists {
+			if err := q.UpdateFolder(ctx, dbgen.UpdateFolderParams{Name: f.Name, Size: size, ID: f.ID}); err != nil {
+				return nil, fmt.Errorf("update folder %s: %w", f.ID, err)
+			}
+			continue
 		}
 		if err := q.CreateFolder(ctx, dbgen.CreateFolderParams{ID: f.ID, Name: f.Name, Size: size}); err != nil {
 			return nil, fmt.Errorf("create folder %s: %w", f.ID, err)

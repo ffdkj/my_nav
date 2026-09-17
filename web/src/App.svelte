@@ -1,5 +1,7 @@
 <script lang="ts">
   import { Moon, Sun } from '@lucide/svelte'
+  import FolderDialog from '$lib/components/FolderDialog.svelte'
+  import FolderModal from '$lib/components/FolderModal.svelte'
   import Grid from '$lib/components/Grid.svelte'
   import LinkDialog from '$lib/components/LinkDialog.svelte'
   import SearchBar from '$lib/components/SearchBar.svelte'
@@ -12,6 +14,8 @@
   let dark = $state(true)
   let dialogOpen = $state(false)
   let editing = $state<Link | null>(null)
+  let openFolder = $state<Item | null>(null)
+  let editFolder = $state<Item | null>(null)
 
   let started = false
   $effect(() => {
@@ -31,6 +35,10 @@
   }
 
   function openEdit(item: Item) {
+    if (item.kind === 'folder') {
+      editFolder = item
+      return
+    }
     editing = board.linkOf(item) ?? null
     dialogOpen = true
   }
@@ -38,7 +46,6 @@
   async function submitDialog(url: string, title: string) {
     dialogOpen = false
     if (editing) {
-      // 编辑已有链接：先本地改，再 PATCH 到服务端
       const target = editing
       const id = target.id
       board.links[id] = { ...target, url, title: title || target.title }
@@ -54,6 +61,10 @@
   }
 
   function confirmDelete(item: Item) {
+    if (item.kind === 'folder') {
+      editFolder = item
+      return
+    }
     const link = board.linkOf(item)
     const name = link?.title ?? '该图标'
     if (!window.confirm(`确定删除「${name}」吗？`)) return
@@ -96,14 +107,19 @@
     {#if board.status === 'loading' && board.sequence.length === 0}
       <p class="py-20 text-center text-sm text-white/50">加载中…</p>
     {:else}
-      <Grid onadd={openAdd} onedit={openEdit} ondelete={confirmDelete} />
+      <Grid
+        onadd={openAdd}
+        onedit={openEdit}
+        ondelete={confirmDelete}
+        onopenfolder={(item) => (openFolder = item)}
+      />
     {/if}
 
     <footer class="pt-4 text-xs text-white/30">
       {#if board.lastError}
         上次操作失败：{board.lastError}
       {:else}
-        M2 · 网格 / 拖拽吸附 / 搜索（Fuse）/ 乐观更新与失败回读
+        M3 · 拖拽吸附 / 悬停 {board.mergeDwellMs}ms 合并为文件夹 / 小夹模态 / 大夹 2×2 直接可点
       {/if}
     </footer>
   </div>
@@ -115,5 +131,8 @@
   onsubmit={submitDialog}
   onclose={() => (dialogOpen = false)}
 />
+
+<FolderModal item={openFolder} onclose={() => (openFolder = null)} />
+<FolderDialog item={editFolder} onclose={() => (editFolder = null)} />
 
 <Toasts />

@@ -27,5 +27,17 @@ make e2e          # = ./e2e/run.sh
    entering somewhere else"*——拖拽能启动、元素跟着走，但**永远算不出落点**。
    现在 `<ul>` 是真实网格，「+」按打包器算出的下一空位绝对定位。
 
-3. 排查这类问题的最快手段是打开库自带的调试模式：`setDebugMode(true)`
+3. **合并的命中判定要用"拖拽开始那一刻"的布局快照。**
+   库在拖拽过程中会实时重排：把 A 拖到 B 上时，A 的 shadow 占位**就落在 B 的格子里**，
+   于是"指针当前所在格子"永远指向自己，永远判定不出合并目标（表现为：拖到别人身上
+   悬停再久也不高亮、松手只是普通排序）。
+   现在在 `DRAG_STARTED` 时用 `captureHitCells()` 冻结当时的 (col,row)，
+   命中判定全部基于这份快照——对应到用户心智就是"我悬停在原来那个图标上"。
+   另外 shadow 的 id 固定是 `SHADOW_PLACEHOLDER_ITEM_ID`，必须当成"自己"排除。
+
+4. **每个用例用独立的数据目录与端口**（`run.sh` 里的 `run_case`）。
+   曾经两个脚本共用一个库，`smoke` 加的 GitHub 和 `folders` 加的撞名，
+   导致 `getByRole('link')` 命中 2 个元素而失败——这是测试隔离问题，不是产品 bug。
+
+5. 排查这类问题的最快手段是打开库自带的调试模式：`setDebugMode(true)`
    （`svelte-dnd-action` 导出），它会直接把拒绝/判定理由打在 console 里。

@@ -399,3 +399,57 @@ func TestValidateBoardTable(t *testing.T) {
 		})
 	}
 }
+
+// new_folders 是 upsert 语义：同一个 id 再次提交时更新名字/尺寸。
+// 这是"把 1x1 小夹放大成 2x2 大夹"的落库路径。
+func TestFolderSizeUpsert(t *testing.T) {
+	svc, ctx := newTestService(t)
+
+	children := []ChildDTO{
+		{ID: "c1", LinkID: "l1", SortOrder: 0},
+		{ID: "c2", LinkID: "l2", SortOrder: 1},
+	}
+	board, err := svc.PutBoard(ctx, testPage, &BoardPayload{
+		Revision:   0,
+		NewLinks:   []LinkInput{{ID: "l1", URL: "https://a.dev"}, {ID: "l2", URL: "https://b.dev"}},
+		NewFolders: []FolderInput{{ID: "f1", Size: 1}},
+		Items: []ItemDTO{
+			{ID: "i1", Kind: "folder", FolderID: "f1", Size: 1, Col: 0, Row: 0, Children: children},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create folder: %v", err)
+	}
+	if board.Folders[0].Size != 1 {
+		t.Fatalf("initial size = %d, want 1", board.Folders[0].Size)
+	}
+
+	// 放大成 2x2：同 id 再提交一次
+	board, err = svc.PutBoard(ctx, testPage, &BoardPayload{
+		Revision:   board.Revision,
+		NewFolders: []FolderInput{{ID: "f1", Size: 2}},
+		Items: []ItemDTO{
+			{ID: "i1", Kind: "folder", FolderID: "f1", Size: 2, Col: 0, Row: 0, Children: children},
+		},
+	})
+	if err != nil {
+		t.Fatalf("upsert folder size: %v", err)
+	}
+	if len(board.Folders) != 1 || board.Folders[0].Size != 2 {
+		t.Fatalf("folders = %+v, want one size-2 folder", board.Folders)
+	}
+	if board.Items[0].Size != 2 {
+		t.Errorf("item size = %d, want 2", board.Items[0].Size)
+	}
+
+	// 尺寸不合法必须被拒
+	if _, err := svc.PutBoard(ctx, testPage, &BoardPayload{
+		Revision:   board.Revision,
+		NewFolders: []FolderInput{{ID: "f1", Size: 3}},
+		Items: []ItemDTO{
+			{ID: "i1", Kind: "folder", FolderID: "f1", Size: 2, Col: 0, Row: 0, Children: children},
+		},
+	}); err == nil {
+		t.Fatal("expected an error for size=3")
+	}
+}

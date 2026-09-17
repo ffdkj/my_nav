@@ -39,6 +39,14 @@ page.on('console', (m) => {
 page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + e.message))
 
 try {
+  // 本脚本测的是**排序**。把合并阈值调大，避免拖到目标上时意外触发合并
+  // （合并由 folders.mjs 专门验证，那里会把阈值设回 500ms）。
+  await fetch(`${BASE}/api/settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ merge_dwell_ms: '3000' }),
+  }).catch(() => {})
+
   await page.goto(BASE, { waitUntil: 'networkidle' })
 
   // 1) 初始渲染
