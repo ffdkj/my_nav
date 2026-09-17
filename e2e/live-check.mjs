@@ -1,0 +1,188 @@
+/**
+ * 线上实例的**只读**体检（部署后跑一遍，确认"装上去的确实是新版本、而且真的对"）。
+ *
+ *   NAV_BASE=http://100.70.0.29:8090 node e2e/live-check.mjs
+ *
+ * ⚠️ 只读约定：只用 GET + 客户端行为观察（翻页只改浏览器 hash）。
+ * 任何人可能正在用这个实例，所以：
+ *   - 断言**不变量**而不是固定值（例如"页面主题必须等于服务端此刻的设置"），
+ *     否则真人随手点一下就会让检查变红；
+ *   - 不 PATCH 设置、不新增/删除数据、不触发图标抓取。
+ *
+ * 与 e2e/*.mjs 的区别：那些用例会起自己的临时实例并写数据，这个只"看"。
+ */
+import { chromium } from 'playwright'
+
+const BASE = process.env.NAV_BASE
+if (!BASE) {
+  console.error('需要 NAV_BASE，例如 NAV_BASE=http://100.70.0.29:8090 node e2e/live-check.mjs')
+  process.exit(2)
+}
+
+const results = []
+const check = (name, ok, detail = '') => {
+  results.push({ name, ok })
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  -> ' + detail : ''}`)
+}
+
+const settings = async () => await (await fetch(`${BASE}/api/settings`)).json()
+const pages = async () => (await (await fetch(`${BASE}/api/pages/`)).json()).pages
+const bootstrap = async () => await (await fetch(`${BASE}/api/bootstrap`)).json()
+
+const browser = await chromium.launch()
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+const errors = []
+page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
+page.on('pageerror', (e) => errors.push('pageerror: ' + e.message.split('\n')[0]))
+
+/** 页面里逐帧记录换页动画的 inline style（computed transform 在 headless 下不可信） */
+const sampler = (ms) =>
+  new Promise((resolve) => {
+    const frames = []
+    const t0 = performance.now()
+    const tick = () => {
+      const stage = document.querySelector('[data-testid="page-stage"]')
+      const ghost = document.querySelector('[data-testid="page-ghost"]')
+      const track = document.querySelector('[data-testid="wallpaper-track"]')
+      frames.push({
+        stage: (stage?.getAttribute('style') || '').replace(/transition:[^;]*;?/g, '').trim(),
+        ghost: (ghost?.getAttribute('style') || '').replace(/transition:[^;]*;?/g, '').trim(),
+        track: track ? (track.getAttribute('style') || '').replace(/transition:[^;]*;?/g, '').trim() : null,
+      })
+      if (performance.now() - t0 < ms) requestAnimationFrame(tick)
+      else resolve(frames)
+    }
+    requestAnimationFrame(tick)
+  })
+
+try {
+  const boot = await bootstrap()
+  const st = await settings()
+  check('服务端可访问', Boolean(boot?.pages?.length), `pages=${boot?.pages?.length}`)
+
+  await page.goto(BASE, { waitUntil: 'networkidle' })
+  await page.waitForSelector('[data-testid="page-stage"]')
+  await page.waitForTimeout(600)
+
+  const dom = await page.evaluate(() => {
+    const root = document.documentElement
+    const tile = document.querySelector('[data-testid="tile-link"]')
+    // 图块里可能是真图标，也可能是纯色兜底（例如这个站没抓到图标）——
+    // 两种都该"撑满"，所以取哪个存在就量哪个
+    const art = document.querySelector('[data-testid="tile-icon"], [data-testid="tile-monogram"]')
+    const label = document.querySelector('[data-testid="tile-label"]')
+    const bar = document.querySelector('input[aria-label="搜索"]')?.closest('div')
+    const radius = getComputedStyle(root).getPropertyValue('--radius-tile').trim()
+    return {
+      dark: root.classList.contains('dark'),
+      dataTheme: root.dataset.theme,
+      photo: root.dataset.photo ?? '',
+      scrim: Boolean(document.querySelector('[data-testid="wallpaper-scrim"]')),
+      wallpaper: document.querySelector('[data-testid="wallpaper"]')?.getAttribute('src') ?? null,
+      fill: art && tile ? art.getBoundingClientRect().width / tile.getBoundingClientRect().width : null,
+      artKind: art ? art.getAttribute('data-testid') : null,
+      labelOpacity: label ? getComputedStyle(label).opacity : null,
+      barBg: bar ? getComputedStyle(bar).backgroundColor : null,
+      radius,
+      slideMs: getComputedStyle(root).getPropertyValue('--page-slide-ms').trim(),
+      tiles: document.querySelectorAll('[data-testid="tile-link"]').length,
+    }
+  })
+
+  // 主题：只看"与此刻的服务端设置是否一致"，绝不断言某个固定值
+  const serverDark = st.theme === 'dark' || (st.theme === 'auto' && dom.dark)
+  check(
+    '页面主题与服务端设置一致（theme=' + st.theme + '）',
+    dom.dark === serverDark && dom.dataTheme === (dom.dark ? 'dark' : 'light'),
+    JSON.stringify({ dark: dom.dark, dataTheme: dom.dataTheme }),
+  )
+
+  // 蒙版与玻璃：深色 + 有照片 才该有蒙版
+  const wantScrim = dom.dark && dom.photo === '1'
+  check(
+    '蒙版规则正确（深色+照片才铺黑蒙版；浅色一律不铺）',
+    dom.scrim === wantScrim,
+    JSON.stringify({ dark: dom.dark, photo: dom.photo, scrim: dom.scrim }),
+  )
+  if (dom.photo === '1' && !dom.dark) {
+    check('浅色 + 照片：玻璃翻成白色半透明', dom.barBg === 'rgba(255, 255, 255, 0.55)', dom.barBg)
+  } else {
+    check('无照片 / 深色：玻璃用默认那一档', Boolean(dom.barBg), dom.barBg)
+  }
+
+  check('图块形状变量就位（默认圆角方形 1rem）', dom.radius !== '', `--radius-tile=${dom.radius}`)
+  check('动画时长是 300ms', ['.3s', '0.3s', '300ms'].includes(dom.slideMs), dom.slideMs)
+
+  if (dom.tiles > 0) {
+    check(
+      '图标撑满图块（宽度占比 ≥95%）',
+      dom.fill !== null && dom.fill > 0.95,
+      `fill=${dom.fill} art=${dom.artKind}`,
+    )
+    check('标题默认不显示（悬停才浮出）', dom.labelOpacity === '0', `opacity=${dom.labelOpacity}`)
+    await page.locator('[data-testid="tile-link"]').first().hover()
+    await page.waitForTimeout(250)
+    const hovered = await page.evaluate(
+      () => getComputedStyle(document.querySelector('[data-testid="tile-label"]')).opacity,
+    )
+    check('悬停后标题浮出', Number(hovered) > 0.9, `opacity=${hovered}`)
+    await page.mouse.move(0, 0)
+  } else {
+    check('当前页没有图块，跳过撑满/悬停检查', true)
+  }
+
+  // 换页方向：两个方向必须相反（这是 0.2.0 修掉的那个 bug 的线上回归）
+  const list = await pages()
+  if (list.length >= 2) {
+    const flip = async (from, to) => {
+      await page.locator('nav[aria-label="页面"] button').nth(from).click()
+      await page.waitForTimeout(700)
+      const p = page.evaluate(sampler, 700)
+      await page.locator('nav[aria-label="页面"] button').nth(to).click()
+      const frames = await p
+      await page.waitForTimeout(400)
+      const withStage = frames.filter((f) => f.stage.includes('translate3d'))
+      const pct = (s) => {
+        const m = /translate3d\((-?[\d.]+)%/.exec(s || '')
+        return m ? Number(m[1]) : null
+      }
+      const tracks = frames.filter((f) => f.track)
+      return {
+        stageStart: pct(withStage[0]?.stage),
+        ghostStart: pct(withStage[0]?.ghost),
+        trackFirst: pct(tracks[0]?.track),
+        trackLast: pct(tracks[tracks.length - 1]?.track),
+        trackSeen: tracks.length > 0,
+      }
+    }
+    const next = await flip(0, 1)
+    const prev = await flip(1, 0)
+    check('下一个页：图标从右侧进（起点 +100%）', next.stageStart === 100, JSON.stringify(next))
+    check('上一个页：图标从左侧进（起点 -100%）', prev.stageStart === -100, JSON.stringify(prev))
+    if (next.trackSeen || prev.trackSeen) {
+      check(
+        '壁纸轨道方向跟着图标（下一页 0→-50，上一页 -50→0）',
+        next.trackFirst === 0 && next.trackLast === -50 && prev.trackFirst === -50 && prev.trackLast === 0,
+        JSON.stringify({ next, prev }),
+      )
+    } else {
+      check('两页壁纸相同 → 壁纸层不平移（符合预期）', true)
+    }
+  } else {
+    check('只有一个页面，跳过换页方向检查', true)
+  }
+
+  check('浏览器控制台无 error', errors.length === 0, errors.slice(0, 2).join(' | '))
+} catch (err) {
+  check('检查过程未抛异常', false, err.message)
+} finally {
+  await browser.close()
+}
+
+const failed = results.filter((r) => !r.ok)
+console.log(`\n${results.length - failed.length}/${results.length} 通过`)
+if (failed.length) {
+  console.log('失败项：')
+  for (const f of failed) console.log('  - ' + f.name)
+}
+process.exit(failed.length ? 1 : 0)

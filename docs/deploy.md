@@ -72,6 +72,19 @@ sudo docker compose up -d    # 或 sudo docker-compose up -d
 
 ---
 
+## 1.5 部署后体检（只读）
+
+```bash
+NAV_BASE=http://100.70.0.29:8090 node e2e/live-check.mjs
+```
+
+13 项只读断言：版本/迁移、主题一致性、蒙版规则、玻璃与形状变量、动画时长、
+两方向换页相反、控制台无报错。**它不写任何数据**，可以随时对着线上跑一遍。
+容器日志里 `migration applied file=00N_*.sql version=N` + `database ready schema_version=N`
+是迁移落地的直接证据。
+
+---
+
 ## 2. 验收清单
 
 ```bash
