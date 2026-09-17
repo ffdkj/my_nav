@@ -9,6 +9,60 @@ import (
 	"context"
 )
 
+const createEngine = `-- name: CreateEngine :exec
+INSERT INTO engines (id, name, url_tpl, icon_text, icon_color, sort_order, is_builtin)
+VALUES (?, ?, ?, ?, ?, ?, 0)
+`
+
+type CreateEngineParams struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	UrlTpl    string `json:"url_tpl"`
+	IconText  string `json:"icon_text"`
+	IconColor string `json:"icon_color"`
+	SortOrder int64  `json:"sort_order"`
+}
+
+func (q *Queries) CreateEngine(ctx context.Context, arg CreateEngineParams) error {
+	_, err := q.db.ExecContext(ctx, createEngine,
+		arg.ID,
+		arg.Name,
+		arg.UrlTpl,
+		arg.IconText,
+		arg.IconColor,
+		arg.SortOrder,
+	)
+	return err
+}
+
+const deleteEngine = `-- name: DeleteEngine :exec
+DELETE FROM engines WHERE id = ?
+`
+
+func (q *Queries) DeleteEngine(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteEngine, id)
+	return err
+}
+
+const getEngine = `-- name: GetEngine :one
+SELECT id, name, url_tpl, icon_text, icon_color, sort_order, is_builtin FROM engines WHERE id = ?
+`
+
+func (q *Queries) GetEngine(ctx context.Context, id string) (Engine, error) {
+	row := q.db.QueryRowContext(ctx, getEngine, id)
+	var i Engine
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.UrlTpl,
+		&i.IconText,
+		&i.IconColor,
+		&i.SortOrder,
+		&i.IsBuiltin,
+	)
+	return i, err
+}
+
 const listEngines = `-- name: ListEngines :many
 
 SELECT id, name, url_tpl, icon_text, icon_color, sort_order, is_builtin FROM engines ORDER BY sort_order, id
@@ -44,4 +98,40 @@ func (q *Queries) ListEngines(ctx context.Context) ([]Engine, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const maxEngineSortOrder = `-- name: MaxEngineSortOrder :one
+SELECT COALESCE(MAX(sort_order), 0) AS max_sort_order FROM engines
+`
+
+func (q *Queries) MaxEngineSortOrder(ctx context.Context) (interface{}, error) {
+	row := q.db.QueryRowContext(ctx, maxEngineSortOrder)
+	var max_sort_order interface{}
+	err := row.Scan(&max_sort_order)
+	return max_sort_order, err
+}
+
+const updateEngine = `-- name: UpdateEngine :exec
+UPDATE engines SET name = ?, url_tpl = ?, icon_text = ?, icon_color = ?, sort_order = ? WHERE id = ?
+`
+
+type UpdateEngineParams struct {
+	Name      string `json:"name"`
+	UrlTpl    string `json:"url_tpl"`
+	IconText  string `json:"icon_text"`
+	IconColor string `json:"icon_color"`
+	SortOrder int64  `json:"sort_order"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) UpdateEngine(ctx context.Context, arg UpdateEngineParams) error {
+	_, err := q.db.ExecContext(ctx, updateEngine,
+		arg.Name,
+		arg.UrlTpl,
+		arg.IconText,
+		arg.IconColor,
+		arg.SortOrder,
+		arg.ID,
+	)
+	return err
 }

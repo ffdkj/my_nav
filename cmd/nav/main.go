@@ -65,7 +65,10 @@ func run() error {
 	cfg := config.Load()
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel})))
 
-	for _, dir := range []string{cfg.DataDir, cfg.IconsDir(), cfg.WallpapersDir(), cfg.BackupDir()} {
+	for _, dir := range []string{
+		cfg.DataDir, cfg.IconsDir(), cfg.WallpapersDir(),
+		cfg.WallpaperOrigDir(), cfg.WallpaperThumbDir(), cfg.BackupDir(),
+	} {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return err
 		}
@@ -89,7 +92,13 @@ func run() error {
 	srv := &http.Server{
 		Addr: cfg.Addr,
 		Handler: server.New(cfg, nav.New(handle,
-			nav.WithIcons(favicon.NewStore(cfg.IconsDir()), favicon.NewFetcher(slog.Default(), cfg.AllowPrivateFetch)),
+			nav.WithMedia(
+				favicon.NewStore(cfg.IconsDir()),
+				favicon.NewStore(cfg.WallpaperOrigDir()),
+				favicon.NewStore(cfg.WallpaperThumbDir()),
+				favicon.NewFetcher(slog.Default(), cfg.AllowPrivateFetch),
+				cfg.AllowPrivateFetch,
+			),
 			nav.WithLogger(slog.Default()),
 		)),
 		ReadHeaderTimeout: 10 * time.Second,

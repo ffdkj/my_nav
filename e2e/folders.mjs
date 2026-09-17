@@ -98,11 +98,12 @@ try {
   await page.screenshot({ path: 'e2e/shot-m3-02-folder.png' })
 
   // ---- 2) 小夹外显 9 个缩略位 ----
-  const slots = await page.locator('button[aria-label^="打开"] .grid > *').count()
+  // 限定在网格内：设置齿轮的 aria-label 也以「打开」开头，全局匹配会撞名
+  const slots = await page.locator('ul[aria-label="导航图标"] button[aria-label^="打开"] .grid > *').count()
   check('小夹外显 9 个缩略位', slots === 9, `slots=${slots}`)
 
   // ---- 3) 点击打开模态 ----
-  await page.locator('button[aria-label^="打开"]').click()
+  await page.locator('ul[aria-label="导航图标"] button[aria-label^="打开"]').click()
   const modal = page.locator('div[role="dialog"]')
   await modal.waitFor({ timeout: 5_000 })
   check('点击小夹打开模态', await modal.isVisible())
@@ -123,7 +124,7 @@ try {
   await page.waitForTimeout(300)
 
   // ---- 5) 切成 2x2 大夹 ----
-  await page.locator('button[aria-label^="编辑"]').first().click()
+  await page.locator('ul[aria-label="导航图标"] button[aria-label^="编辑"]').first().click()
   const fdialog = page.locator('div[role="dialog"][aria-label="编辑文件夹"]')
   await fdialog.waitFor({ timeout: 5_000 })
   await fdialog.getByRole('button', { name: /2×2/ }).click()

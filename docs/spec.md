@@ -302,7 +302,7 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 | GET | `/api/backup` | `{exists, at, bytes}`（设置页展示） |
 | GET | `/api/backup/download` | 下载 `pre-import.json` |
 | GET | `/icons/{path}` | 图标（内容寻址 + 强缓存 + `nosniff`） |
-| GET | `/wallpapers/{file}` | 壁纸原图/缩略图 |
+| GET | `/wallpapers/{orig\|thumb}/*` | 壁纸原图/缩略图（通配路由；内容寻址的路径是两段） |
 
 ### 6.1 PUT board 请求体（核心）
 
@@ -356,7 +356,9 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 ---
 
 ## 8. 壁纸子系统
-- 上传：≤10MB，接受 jpg/png/webp；原图存 `/data/wallpapers/orig/`，生成 1920 宽 WebP 缩略图（`/data/wallpapers/thumb/`，失败则回退 JPEG）。
+- 上传：≤10MB，接受 png/jpg/webp/gif（按解码结果嗅探，不用 `http.DetectContentType`）；原图按真实格式存 `/data/wallpapers/orig/`，缩略图为 1920 宽 **JPEG q82** 存 `/data/wallpapers/thumb/`。
+  ⚠️ 与原计划的偏差：缩略图用 JPEG 而非 WebP —— `golang.org/x/image` 只有 WebP **解码**、没有编码器，纯 Go 编码 WebP 需要 cgo 或第三方实现，会赔掉 `CGO_ENABLED=0` 静态单二进制的优势。壁纸是照片类内容，JPEG 足够。
+- 两者均为**内容寻址**（sha256 路径）⇒ 重复上传不占两份；删除时按引用计数清理文件（eMMC 只有十几 G）。
 - URL 模式：前端直链（省服务器流量），提供"下载到服务器"（`materialize`，走同一 SSRF 防护与大小上限）。
 - 多张 + 排序；轮换模式 `off | load（每次进入随机）| interval（每 N 分钟）`。
 - 每页 `wallpaper_mode = global | custom`；全局壁纸在无自定义的页面上生效。

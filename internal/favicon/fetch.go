@@ -395,3 +395,37 @@ func DecodeDataURL(raw string) ([]byte, string, bool) {
 	}
 	return []byte(payload), mime, true
 }
+
+// Download 用与抓取图标相同的防护策略下载一个文件（壁纸"下载到服务器"用）。
+// 返回内容与 Content-Type；调用方负责校验格式。
+func Download(ctx context.Context, rawURL string, maxBytes int64, allowPrivate bool) ([]byte, string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Host == "" {
+		return nil, "", errors.New("favicon: invalid URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, "", errors.New("favicon: only http(s) URLs are supported")
+	}
+
+	client := newClient(20*time.Second, allowPrivate)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "image/*,*/*;q=0.8")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("favicon: %s returned %d", parsed.String(), resp.StatusCode)
+	}
+	data, err := readCapped(resp.Body, maxBytes)
+	if err != nil {
+		return nil, "", err
+	}
+	return data, resp.Header.Get("Content-Type"), nil
+}

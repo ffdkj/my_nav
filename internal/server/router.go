@@ -44,17 +44,41 @@ func New(cfg config.Config, svc *nav.Service) http.Handler {
 	r.Get("/icons/*", s.h.serveIcon)
 	r.Head("/icons/*", s.h.serveIcon)
 
+	// 壁纸文件：/wallpapers/{orig|thumb}/<内容寻址相对路径>
+	// ⚠️ 必须是通配：内容寻址的路径是两段（<sha 前两位>/<sha>.<ext>），
+	// 用单段 {name} 会让所有壁纸 404，症状是"壁纸设了却不显示"（静默回落到兜底色）。
+	r.Get("/wallpapers/{kind}/*", s.h.serveWallpaper)
+	r.Head("/wallpapers/{kind}/*", s.h.serveWallpaper)
+
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/bootstrap", s.h.bootstrap)
 		api.Get("/settings", s.h.getSettings)
 		api.Patch("/settings", s.h.patchSettings)
 		api.Post("/board/move", s.h.moveItem)
+		api.Post("/engines", s.h.createEngine)
+		api.Post("/engines/reorder", s.h.reorderEngines)
+		api.Patch("/engines/{engineID}", s.h.updateEngine)
+		api.Delete("/engines/{engineID}", s.h.deleteEngine)
+		api.Get("/wallpapers", s.h.listWallpapers)
+		api.Post("/wallpapers", s.h.createWallpaper)
+		api.Patch("/wallpapers/{wallpaperID}", s.h.updateWallpaper)
+		api.Delete("/wallpapers/{wallpaperID}", s.h.deleteWallpaper)
+		api.Post("/wallpapers/{wallpaperID}/materialize", s.h.materializeWallpaper)
 		api.Get("/links", s.h.listLinks)
 		api.Patch("/links/{linkID}", s.h.updateLink)
 		api.Post("/links/{linkID}/icon/refetch", s.h.refetchIcon)
 		api.Post("/links/{linkID}/icon/reset", s.h.resetIcon)
 		api.Post("/links/{linkID}/icon/upload", s.h.uploadIcon)
 		api.Post("/links/{linkID}/icon/monogram", s.h.setMonogram)
+
+		api.Get("/engines", func(w http.ResponseWriter, r *http.Request) {
+			boot, err := s.h.svc.Bootstrap(r.Context())
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"engines": boot.Engines})
+		})
 
 		api.Route("/pages", func(pages chi.Router) {
 			pages.Get("/", s.h.listPages)

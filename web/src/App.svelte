@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Moon, Sun } from '@lucide/svelte'
+  import { Moon, Settings, Sun } from '@lucide/svelte'
   import CarryLayer from '$lib/components/CarryLayer.svelte'
   import ContextMenu, { type MenuTarget } from '$lib/components/ContextMenu.svelte'
   import FolderDialog from '$lib/components/FolderDialog.svelte'
@@ -9,6 +9,8 @@
   import PageDots from '$lib/components/PageDots.svelte'
   import PageManager from '$lib/components/PageManager.svelte'
   import SearchBar from '$lib/components/SearchBar.svelte'
+  import SettingsDialog from '$lib/components/SettingsDialog.svelte'
+  import WallpaperLayer from '$lib/components/WallpaperLayer.svelte'
   import Toasts from '$lib/components/Toasts.svelte'
   import { api } from '$lib/api'
   import { board } from '$lib/store/board.svelte'
@@ -21,6 +23,7 @@
   let openFolder = $state<Item | null>(null)
   let editFolder = $state<Item | null>(null)
   let managerOpen = $state(false)
+  let settingsOpen = $state(false)
   let menu = $state<MenuTarget | null>(null)
 
   let started = false
@@ -147,10 +150,7 @@
   onpointerdown={onpointerdown}
   onpointerup={onpointerup}
 >
-  <div
-    class="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_10%,#16203a,transparent_55%),radial-gradient(circle_at_80%_0%,#0d2a4a,transparent_45%)]"
-    aria-hidden="true"
-  ></div>
+  <WallpaperLayer />
 
   <div class="mx-auto flex min-h-dvh max-w-6xl flex-col gap-6 px-4 py-8">
     <header class="flex items-center gap-3">
@@ -165,6 +165,14 @@
         onclick={() => (dark = !dark)}
       >
         {#if dark}<Moon size={18} />{:else}<Sun size={18} />{/if}
+      </button>
+      <button
+        type="button"
+        class="shrink-0 cursor-pointer rounded-full bg-white/10 p-2 ring-1 ring-white/15 hover:bg-white/20"
+        aria-label="打开设置"
+        onclick={() => (settingsOpen = true)}
+      >
+        <Settings size={18} />
       </button>
     </header>
 
@@ -199,7 +207,7 @@
         {#if board.lastError}
           上次操作失败：{board.lastError}
         {:else}
-          M4 · 圆点/滚轮/横滑/拖到边缘翻页 · 长按 800ms 或右键出菜单
+          M6 · 壁纸（上传/外链/轮换）· 设置中心 · 引擎管理
         {/if}
       </p>
     </footer>
@@ -216,6 +224,7 @@
 <FolderModal item={openFolder} onclose={() => (openFolder = null)} />
 <FolderDialog item={editFolder} onclose={() => (editFolder = null)} />
 <PageManager open={managerOpen} onclose={() => (managerOpen = false)} />
+<SettingsDialog open={settingsOpen} onclose={() => (settingsOpen = false)} />
 <ContextMenu
   target={menu}
   onclose={() => (menu = null)}

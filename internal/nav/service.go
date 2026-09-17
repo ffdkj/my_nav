@@ -20,18 +20,29 @@ type Service struct {
 	DB *sql.DB
 	Q  *dbgen.Queries
 
-	// 图标抓取与存储。为 nil 时相关功能降级（返回 503 / 跳过抓取），
+	// 媒体存储与抓取。为 nil 时相关功能降级（返回 503 / 跳过抓取），
 	// 这样不关心图标的单元测试可以直接 New(db)。
-	Icons   *favicon.Store
-	Fetcher *favicon.Fetcher
-	Log     *slog.Logger
+	Icons      *favicon.Store
+	Wallpapers *favicon.Store // /data/wallpapers/orig
+	Thumbs     *favicon.Store // /data/wallpapers/thumb
+	Fetcher    *favicon.Fetcher
+	Log        *slog.Logger
+
+	// AllowPrivateFetch 同时影响图标抓取与壁纸"下载到服务器"。
+	AllowPrivateFetch bool
 }
 
 type Option func(*Service)
 
-// WithIcons 注入图标存储与抓取器。
-func WithIcons(store *favicon.Store, fetcher *favicon.Fetcher) Option {
-	return func(s *Service) { s.Icons = store; s.Fetcher = fetcher }
+// WithMedia 注入图标/壁纸存储与抓取器。
+func WithMedia(icons, wallpapers, thumbs *favicon.Store, fetcher *favicon.Fetcher, allowPrivate bool) Option {
+	return func(s *Service) {
+		s.Icons = icons
+		s.Wallpapers = wallpapers
+		s.Thumbs = thumbs
+		s.Fetcher = fetcher
+		s.AllowPrivateFetch = allowPrivate
+	}
 }
 
 func WithLogger(log *slog.Logger) Option {
@@ -51,7 +62,7 @@ func New(db *sql.DB, opts ...Option) *Service {
 type Bootstrap struct {
 	Pages    []PageDTO         `json:"pages"`
 	Settings map[string]string `json:"settings"`
-	Engines  []dbgen.Engine    `json:"engines"`
+	Engines  []EngineDTO       `json:"engines"`
 }
 
 func (s *Service) Bootstrap(ctx context.Context) (*Bootstrap, error) {
@@ -63,9 +74,9 @@ func (s *Service) Bootstrap(ctx context.Context) (*Bootstrap, error) {
 	if err != nil {
 		return nil, err
 	}
-	engines, err := s.Q.ListEngines(ctx)
+	engines, err := s.ListEngines(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list engines: %w", err)
+		return nil, err
 	}
 	return &Bootstrap{Pages: pages, Settings: settings, Engines: engines}, nil
 }

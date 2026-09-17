@@ -13,20 +13,28 @@ type Querier interface {
 	ClearLinkIcon(ctx context.Context, id string) error
 	CountPages(ctx context.Context) (int64, error)
 	CountPlacementsInFolder(ctx context.Context, inFolder *string) (int64, error)
+	CountWallpapersByFile(ctx context.Context, file *string) (int64, error)
+	CountWallpapersByThumb(ctx context.Context, thumbFile *string) (int64, error)
+	CreateEngine(ctx context.Context, arg CreateEngineParams) error
 	// folders.sql - folder CRUD (keep this file pure ASCII, see 001_init.sql header)
 	CreateFolder(ctx context.Context, arg CreateFolderParams) error
 	CreateLink(ctx context.Context, arg CreateLinkParams) error
 	CreatePage(ctx context.Context, arg CreatePageParams) error
 	CreatePlacement(ctx context.Context, arg CreatePlacementParams) error
+	CreateWallpaper(ctx context.Context, arg CreateWallpaperParams) error
+	DeleteEngine(ctx context.Context, id string) error
 	DeleteFolder(ctx context.Context, id string) error
 	DeleteLink(ctx context.Context, id string) error
 	DeletePage(ctx context.Context, id string) error
 	DeletePlacementsForPage(ctx context.Context, pageID string) error
+	DeleteWallpaper(ctx context.Context, id string) error
+	GetEngine(ctx context.Context, id string) (Engine, error)
 	GetFolder(ctx context.Context, id string) (Folder, error)
 	GetLink(ctx context.Context, id string) (Link, error)
 	GetPage(ctx context.Context, id string) (Page, error)
 	GetPageBySlug(ctx context.Context, slug string) (Page, error)
 	GetPlacement(ctx context.Context, id string) (Placement, error)
+	GetWallpaper(ctx context.Context, id string) (Wallpaper, error)
 	ListAllLinksWithPage(ctx context.Context) ([]ListAllLinksWithPageRow, error)
 	// Folders that hold no items - used to enforce "empty folders are deleted".
 	ListEmptyFoldersForPage(ctx context.Context, pageID string) ([]string, error)
@@ -42,15 +50,22 @@ type Querier interface {
 	ListPlacementsForPage(ctx context.Context, pageID string) ([]Placement, error)
 	// settings.sql - key/value settings (keep this file pure ASCII, see 001_init.sql header)
 	ListSettings(ctx context.Context) ([]Setting, error)
+	// wallpapers.sql - wallpapers (keep this file pure ASCII, see 001_init.sql header)
+	ListWallpapers(ctx context.Context) ([]Wallpaper, error)
+	MaterializeWallpaper(ctx context.Context, arg MaterializeWallpaperParams) error
+	MaxEngineSortOrder(ctx context.Context) (interface{}, error)
 	MaxPageSortOrder(ctx context.Context) (interface{}, error)
+	MaxWallpaperSortOrder(ctx context.Context) (interface{}, error)
 	MoveFolderChildren(ctx context.Context, arg MoveFolderChildrenParams) error
 	MovePlacement(ctx context.Context, arg MovePlacementParams) error
 	SetPlacementSort(ctx context.Context, arg SetPlacementSortParams) error
+	UpdateEngine(ctx context.Context, arg UpdateEngineParams) error
 	UpdateFolder(ctx context.Context, arg UpdateFolderParams) error
 	UpdateLink(ctx context.Context, arg UpdateLinkParams) error
 	UpdatePage(ctx context.Context, arg UpdatePageParams) error
 	UpdatePageSortOrder(ctx context.Context, arg UpdatePageSortOrderParams) error
 	UpdatePlacementPos(ctx context.Context, arg UpdatePlacementPosParams) error
+	UpdateWallpaperMeta(ctx context.Context, arg UpdateWallpaperMetaParams) error
 	UpsertSetting(ctx context.Context, arg UpsertSettingParams) error
 }
 

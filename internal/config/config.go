@@ -43,7 +43,11 @@ func (c Config) DBPath() string { return filepath.Join(c.DataDir, "nav.db") }
 // IconsDir / WallpapersDir / BackupDir 是三个子目录的绝对路径。
 func (c Config) IconsDir() string      { return filepath.Join(c.DataDir, "icons") }
 func (c Config) WallpapersDir() string { return filepath.Join(c.DataDir, "wallpapers") }
-func (c Config) BackupDir() string     { return filepath.Join(c.DataDir, "backup") }
+
+// WallpaperOrigDir / WallpaperThumbDir 分别是原图与缩略图（1920 宽 JPEG）。
+func (c Config) WallpaperOrigDir() string  { return filepath.Join(c.WallpapersDir(), "orig") }
+func (c Config) WallpaperThumbDir() string { return filepath.Join(c.WallpapersDir(), "thumb") }
+func (c Config) BackupDir() string         { return filepath.Join(c.DataDir, "backup") }
 
 func env(key, fallback string) string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {

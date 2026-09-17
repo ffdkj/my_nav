@@ -45,6 +45,7 @@ run_case folders "$((BASE_PORT+1))" folders.mjs
 run_case pages   "$((BASE_PORT+2))" pages.mjs
 # 图标用例用本地站点做目标，需要放开私网抓取（默认是关的，见 README）
 run_case icons   "$((BASE_PORT+3))" icons.mjs "NAV_ALLOW_PRIVATE_FETCH=1"
+run_case settings "$((BASE_PORT+4))" settings.mjs
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "全部用例通过"; else echo "有用例失败"; fi

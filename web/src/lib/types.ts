@@ -98,6 +98,18 @@ export interface SearchEngine {
   is_builtin: boolean
 }
 
+export interface Wallpaper {
+  id: Id
+  kind: 'upload' | 'url'
+  remote_url: string | null
+  file: string | null
+  thumb_file: string | null
+  w: number | null
+  h: number | null
+  bytes: number | null
+  sort_order: number
+}
+
 export type Settings = Record<string, string>
 
 export interface Bootstrap {

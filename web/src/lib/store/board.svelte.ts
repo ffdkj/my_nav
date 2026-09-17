@@ -14,6 +14,7 @@ import type {
   Page,
   SearchEngine,
   Settings,
+  Wallpaper,
 } from '$lib/types'
 
 /** 逻辑列数（与服务端 internal/nav.GridCols 必须一致） */
@@ -56,6 +57,7 @@ class BoardStore {
   folders = $state<Record<string, Folder>>({})
   settings = $state<Settings>({})
   engines = $state<SearchEngine[]>([])
+  wallpapers = $state<Wallpaper[]>([])
   status = $state<'idle' | 'loading' | 'saving'>('loading')
   lastError = $state<string | null>(null)
   booted = $state(false)
@@ -677,6 +679,145 @@ class BoardStore {
       if (serverFolderIds.has(id)) continue
       delete this.folders[id]
       this.sequence = this.sequence.filter((i) => i.folder_id !== id)
+    }
+  }
+
+  // ---------- 壁纸 ----------
+
+  async loadWallpapers() {
+    try {
+      const data = await api.get<{ wallpapers: Wallpaper[] }>('/api/wallpapers')
+      this.wallpapers = data.wallpapers
+    } catch (err) {
+      ui.error('加载壁纸失败：' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async addWallpaperFile(id: string, file: File) {
+    const form = new FormData()
+    form.append('id', id)
+    form.append('file', file)
+    try {
+      const created = await api.upload<Wallpaper>('/api/wallpapers', form)
+      this.wallpapers = [...this.wallpapers, created]
+      ui.success('壁纸已上传')
+      return created
+    } catch (err) {
+      ui.error('上传失败：' + (err instanceof Error ? err.message : String(err)))
+      return null
+    }
+  }
+
+  async addWallpaperURL(id: string, url: string) {
+    try {
+      const created = await api.post<Wallpaper>('/api/wallpapers', { id, remote_url: url })
+      this.wallpapers = [...this.wallpapers, created]
+      return created
+    } catch (err) {
+      ui.error('添加失败：' + (err instanceof Error ? err.message : String(err)))
+      return null
+    }
+  }
+
+  async materializeWallpaper(id: string) {
+    try {
+      const updated = await api.post<Wallpaper>(`/api/wallpapers/${id}/materialize`)
+      this.wallpapers = this.wallpapers.map((w) => (w.id === id ? updated : w))
+      ui.success('已下载到服务器')
+    } catch (err) {
+      ui.error('下载失败：' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async deleteWallpaper(id: string) {
+    try {
+      await api.del(`/api/wallpapers/${id}`)
+      this.wallpapers = this.wallpapers.filter((w) => w.id !== id)
+      // 兜底：把引用已删壁纸的设置清掉，避免全站空白
+      const ids = new Set(this.wallpapers.map((w) => w.id))
+      if (this.settings['wallpaper_id'] && !ids.has(this.settings['wallpaper_id'])) {
+        await this.saveSetting('wallpaper_id', '')
+      }
+      const page = this.page
+      if (page?.wallpaper_id && !ids.has(page.wallpaper_id)) {
+        page.wallpaper_id = null
+        await api.patch(`/api/pages/${page.id}`, { wallpaper_id: '' })
+      }
+    } catch (err) {
+      ui.error('删除失败：' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async reorderWallpapers(ids: string[]) {
+    this.wallpapers = ids
+      .map((id, i) => {
+        const w = this.wallpapers.find((x) => x.id === id)
+        return w ? { ...w, sort_order: i } : null
+      })
+      .filter((w): w is Wallpaper => Boolean(w))
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        await api.patch(`/api/wallpapers/${ids[i]}`, { sort_order: i })
+      } catch {
+        /* 排序失败不阻断，下次加载会回到服务端顺序 */
+      }
+    }
+  }
+
+  /** 当前页生效的壁纸：该页自定义优先，否则用全局设置 */
+  get activeWallpaper(): Wallpaper | undefined {
+    const pageId = this.page?.wallpaper_mode === 'custom' ? this.page?.wallpaper_id : null
+    const globalId = this.settings['wallpaper_id'] || null
+    const wanted = pageId || globalId
+    if (!wanted) return undefined
+    return this.wallpapers.find((w) => w.id === wanted)
+  }
+
+  // ---------- 设置与引擎 ----------
+
+  async saveSetting(key: string, value: string) {
+    this.settings[key] = value
+    try {
+      await api.patch('/api/settings', { [key]: value })
+    } catch (err) {
+      ui.error('设置保存失败：' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async reloadEngines() {
+    try {
+      const data = await api.get<{ engines: SearchEngine[] }>('/api/engines')
+      this.engines = data.engines
+    } catch (err) {
+      ui.error('加载搜索引擎失败：' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async saveEngine(engine: {
+    id: string
+    name: string
+    url_tpl: string
+    icon_text: string
+    icon_color: string
+  }, isNew: boolean) {
+    try {
+      if (isNew) await api.post('/api/engines', engine)
+      else await api.patch(`/api/engines/${engine.id}`, engine)
+      await this.reloadEngines()
+      ui.success('已保存')
+      return true
+    } catch (err) {
+      ui.error('保存失败：' + (err instanceof Error ? err.message : String(err)))
+      return false
+    }
+  }
+
+  async deleteEngine(id: string) {
+    try {
+      await api.del(`/api/engines/${id}`)
+      await this.reloadEngines()
+    } catch (err) {
+      ui.error('删除失败：' + (err instanceof Error ? err.message : String(err)))
     }
   }
 
