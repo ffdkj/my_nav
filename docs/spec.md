@@ -51,6 +51,11 @@
 | 28 | 主题 | `settings.theme ∈ {light, dark, auto}`（服务端为事实源）→ 切 `<html class="dark">`；组件只用语义 token，**不写 dark: 变体**；`localStorage` 仅作首屏缓存防闪 |
 | 29 | 每页壁纸 | 写 **`pages.wallpaper_mode/wallpaper_id`**（`PATCH /api/pages/{id}`），**绝不写全局 settings**；实测把这两字段写进 settings 会造成"改本页却动了全局，刷新又被改回跟随全局" |
 | 30 | 换页动画 | 平移 260ms：**图标层**推入推出（旧页用换页前的 DOM 快照出场）；**壁纸层**仅在新旧页壁纸不同时平移（相同时纹丝不动）；**固定 UI**（搜索栏/主题按钮/设置/页码圆点）不参与；`prefers-reduced-motion` 直接跳过 |
+| 31 | 蒙版与玻璃 | **浅色主题不再压白蒙版**（实测"白天那层白"会把壁纸整张洗掉）；照片上的可读性改由**玻璃 token** 提供：`:root[data-photo='1']` 把 `--c-glass/--c-glass-hover/--c-glass-ring/--c-dot` 翻成白色半透明。深色仍压黑蒙版（`--wallpaper-scrim` 只存在于 `.dark`）。`<html data-photo>` 由 `WallpaperLayer` 维护 |
+| 32 | 换页动画修订 | 平移 **300ms** + `cubic-bezier(.32,.72,0,1)`；层用 `translate3d` 强制合成层；**壁纸轨道的方向必须跟着图标**：`dir=+1` 走 `0% → -50%`（向左），`dir=-1` 走 `-50% → 0%`（向右）—— 早先两个方向都写死 `0% → -50%`，导致"上一页"先闪出新壁纸、再滑向旧壁纸、收尾又跳回去；动画期间在 `<html>` 挂 `data-page-sliding`，**临时关掉玻璃面的 `backdrop-filter`**（移动层上每帧重算模糊是掉帧主因） |
+| 33 | 图块形态 | 图标**撑满整块**（`object-contain`，容器给中性玻璃底），标题改为**悬停/聚焦时从底部浮出的压条**；`icon_w < 64` 的小位图只放大到 60%（避免糊）。形状预设 **全局设置 `settings.tile_shape ∈ {rounded, circle, squircle, square}`**（白名单 + 值校验），由 App 写进 `--radius-tile` / `--radius-tile-lg`；大文件块单独一档（圆形预设下用 26%），避免 2×2 变正圆把九宫格四角切掉 |
+| 34 | 图标候选 | `POST /api/icons/candidates {url}` 抓**多张**候选（站点 `<link icon>` 全家 + **manifest icons[]** + `/favicon.ico` + Google `size=256` + DDG），字节**直接落内容寻址仓库**并回传 `/icons/...`；排序 = 质量档（矢量 / ≥180 且透明）> 来源可靠度 > 尺寸，**先排序再去重**（同图多来源时让分数高的来源活下来）。选中后 `POST /api/links/{id}/icon/pick {icon_path, remote_url}` 只改指针并记 `icon_picked_url`。`icon_source` 的 CHECK 约束不动（SQLite 改约束要重建表） |
+| 35 | CI 触发 | `test` 留在 push/PR（便宜），**镜像只在 `v*` tag 与手动 `workflow_dispatch` 构建**；`paths-ignore` 跳过纯文档改动（GitHub 明确 path filters 不作用于 tag push） |
 
 ---
 
@@ -289,12 +294,14 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 | PATCH | `/api/pages/{id}` | 改名/slug/壁纸模式/排序 |
 | DELETE | `/api/pages/{id}` | 删页（最后一页拒绝） |
 | POST | `/api/links` | 建链接 `{id,url,title?,page_id,col,row}` → 同步抓图标后返回（可能 `icon_status=miss`） |
-| PATCH | `/api/links/{id}` | 改标题/URL/打开方式/单色字字段（改 URL 触发重新抓取，除非 `icon_source!=auto`） |
+| PATCH | `/api/links/{id}` | 改标题/URL/打开方式/单色字字段（改 URL 只在 `icon_source=auto` **且**没有手选（`icon_picked_url` 为空）时才重置图标） |
 | DELETE | `/api/links/{id}` | 删链接（同时清 placement） |
 | POST | `/api/links/{id}/icon/refetch` | 手动重新抓取（忽略负缓存） |
 | POST | `/api/links/{id}/icon/upload` | multipart 上传本地图标（≤512KB，缩 256×256） |
 | POST | `/api/links/{id}/icon/monogram` | 切纯色文字（`{text,color,font_size}`） |
-| POST | `/api/links/{id}/icon/reset` | 重置为标准 favicon（`icon_source=auto` + 重新抓取） |
+| POST | `/api/links/{id}/icon/reset` | 重置为标准 favicon（`icon_source=auto` + 重新抓取，同时清掉手选标记） |
+| POST | `/api/links/{id}/icon/pick` | 采用候选里的一张：`{icon_path, remote_url}` → 只改指针 + 记 `icon_picked_url`（字节早已在仓库里） |
+| POST | `/api/icons/candidates` | `{url}` → `{url, candidates[]}`；**不需要链接已存在**（新增对话框输入网址即可查），最多 6 张，同一 URL 60s 内不重复抓 |
 | GET/POST/PATCH/DELETE | `/api/engines[/{id}]` | 引擎 CRUD（内置项可改排序，不可删） |
 | GET/POST/PATCH/DELETE | `/api/wallpapers[/{id}]` | 上传/URL 添加、排序、删除 |
 | POST | `/api/wallpapers/{id}/materialize` | 把图床 URL 下载固化到本地 |
@@ -337,13 +344,24 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 |---|---|---|---|---|
 | 1 | `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=<完整带 scheme 的 URL>&size=128` | 200 + `image/png` | **404 = 无图标**（726B 地球 PNG 哨兵）；`sz` 只是提示，可能只给 32/16px | 1.2s |
 | 2 | `https://icons.duckduckgo.com/ip3/<host>.ico` | 200 + `image/x-icon` | 404 = 无 | 1.0s |
-| 3 | 自建发现：GET 站点 HTML → 解析 `<link rel="icon"\|shortcut icon\|apple-touch-icon\|mask-icon>`（按研究里的优先级，href 依 `<base href>` 解析）→ 取最大/最合适；再兜 `/favicon.ico` | 200 + 可解析图片 | 无 link 且 `/favicon.ico` 非 200 | 1.5s |
+| 3 | 自建发现：GET 站点 HTML → 解析 `<link rel="icon"\|shortcut icon\|apple-touch-icon\|mask-icon>`（按研究里的优先级，href 依 `<base href>` 解析）→ 取最大/最合适；再兜 `/favicon.ico` | 200 + 可解析图片 | 无 link 且 `/favicon.ico` 非 200 | 1.5s（实现：外部两步各限 700ms，剩下留给它） |
 | 4 | 失败 → `icon_status=miss`，前端直接打开**纯色文字**兜底面板 | — | — | — |
 
 - 第 1 步返回 <64px 时才跑第 3 步尝试升级（避免无谓请求）。
 - `s2/favicons` **不直接用**：它只是 301 跳板、body 是 HTML，等价于 `faviconV2` 多一跳。
 - **负结果缓存**：`icon_status=miss` + `icon_checked_at`，30 天内不自动重试（手动"重新抓取"可绕过）。
 - 自定义 `User-Agent`（如 `my_nav/1.0 (+personal)`）；全局并发信号量 **4**。
+
+### 7.1b 候选清单（`POST /api/icons/candidates`，预算 8s）
+
+自动链路（上表）只挑**一张**；候选接口是"用户主动要挑"，所以：
+
+- 来源：站点自述的全部合格候选 + **manifest `icons[]`**（现代站点往往只在这里声明 192/512）+ `/favicon.ico` + Google `size=256` + DDG；并发抓取（4），并发去重。
+- 元数据：`alpha`（透明底判定，PNG/WebP/GIF 抽样扫 alpha 通道；JPEG 必为 false；SVG/ICO 为 null）与 ICO 的**头部尺寸**（读 ICONDIR，不解码像素）。
+- 排序：质量档 3 = 矢量 / ≥180 且透明；2 = ≥180；1 = 其余。同档比来源可靠度（apple-touch ≈ manifest > link-icon > google > ddg > mask-icon ≈ favicon.ico），再比尺寸。
+- 同图去重（sha256）在**排序之后**做，保证留下的是"来路更好"的那一份。
+- 结果直接落盘（内容寻址），前端拿 `icon_path` 当缩略图；选中时只回传路径。
+- 同一 URL 60s 内不重复抓（内存缓存，上限 64 条，个人规模足够）。
 
 ### 7.2 存储与校验
 - 内容寻址：`/data/icons/<sha256[0:2]>/<sha256>.<ext>`（ext 由嗅探 MIME 决定），DB 存相对路径 → 同图标自动去重。
@@ -391,6 +409,11 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
   这类**同一批类名**在两种主题下自动取到不同颜色 —— 组件里**一个 `dark:` 变体都不写**。
   前景色统一用 `fg` 语义 token（深色下近白、浅色下近黑），`white/N` 只允许出现在**彩色底**上
   （主色按钮/单色字圆片/toast），因为那里要的确实是白色。
+  压在**壁纸之上**的固定 UI（图块/文件夹/搜索栏/头部按钮/页码圆点）另有一组 `glass` token
+  （`bg-glass` / `ring-glass-ring` / `hover:bg-glass-hover` / `bg-dot`），它们的取值维度是
+  "主题 × 画面里有没有照片"：浅色无照片 = 深色 10% 淡染，浅色有照片 = 白色 55%（照片上不压蒙版的
+  代价就用这里补回来），深色两档一致。玻璃面的模糊统一走 `.frosted` 类，好让动画期间一处关掉。
+  图块圆角读 `--radius-tile` / `--radius-tile-lg`（由 `settings.tile_shape` 写进 `<html>` 内联样式）。
   `.dark` 与 `:root` 特异性相同，靠源码顺序决胜，所以覆盖块必须写在 `@theme` 之后。
 - **图块尺寸**：CSS 变量 `--tile`（桌面 96px / 平板 84px / 手机 72px），12 列逻辑网格，显示列数 = `min(12, floor(可用宽 / (tile+gap)))`，超出列宽的项按 `row-major` 折行。
 - **无障碍**：`<nav aria-label>` + `<li>` 包真实 `<a href>`（不用 `role="grid"`）；每个 dndzone 与每个可拖项都有 `aria-label`；合并动作走 `aria-live="polite"` 播报（库不认识我们的合并状态变化）；`setKeyboardDragTrigger('space')` 以保住 Enter 打开链接。
@@ -569,6 +592,7 @@ store 里的收尾定时读它（注意压缩后是 `.26s`，要按单位换算�
 | **M8** | PWA（manifest/图标/NetworkFirst/更新提示）——**已完成**：`registerType: prompt` + 应用侧写穿缓存；非安全上下文下静默降级 | e2e 双路径验收：安全上下文（127.0.0.1）下 SW 接管 + 离线可打开且数据来自缓存；局域网 IP 下不注册、不报错、应用照常可用 |
 | **M9** | Dockerfile + compose + Tailscale 边车 + README + 部署清单 | 宿主 `pull` 后一条命令起，`https://nav.tailbae726.ts.net` 可用 |
 | **M10** | 外观修缺陷：白天/黑夜真正生效（语义色板 + 蒙版跟随主题）、每页壁纸写对表、换页平移动画 | `e2e/appearance.mjs` 30 项全绿：切主题后组件底色一起翻、刷新后主题/本页壁纸都保住、动画只动该动的层 |
+| **M11** | 遮罩/动画打磨（浅色去白蒙版 + 玻璃 token、壁纸轨道方向修正、300ms + 合成层 + 动画期关模糊）、图块撑满 + 形状预设、**图标候选**（多源候选 + 手选 + manifest/透明/ICO 尺寸 + 迁移 002）、CI 降频 | `e2e` 全绿且新增：候选列表与 pick 生效、撑满与悬停文字、形状预设落到 CSS 变量、两方向轨道相反、浅色无蒙版且玻璃翻白 |
 
 ---
 
@@ -587,6 +611,10 @@ store 里的收尾定时读它（注意压缩后是 `.26s`，要按单位换算�
 - [ ] 白天/黑夜：一键切换（含「跟随系统」），**组件底色一起翻**，刷新后保持；壁纸蒙版深浅色各一套，无壁纸时不铺蒙版
 - [ ] 每页壁纸："设为本页"只改本页、不动全局；刷新后仍是本页那张；删除壁纸后引用它的页面退回跟随全局
 - [ ] 换页：图标平移、壁纸仅在换了壁纸时平移、搜索栏与设置按钮纹丝不动
+- [ ] 换页的两个方向必须**相反**（上一个页面向右、下一个页面向左），壁纸层跟着同向；动画期间固定 UI 不参与、掉帧不明显（动画期关掉玻璃模糊）
+- [ ] 图块：图标撑满整块、标题悬停/聚焦浮出；形状预设（圆角/圆形/超椭圆/直角）在设置里一键切换并持久化
+- [ ] 图标候选：输入网址 600ms 后列出多张候选（含出处与尺寸），选中并确定后 `icon_picked_url` 落库；"重新抓取"覆盖手选、改 URL 不抹掉手选
+- [ ] 浅色主题下照片上**没有白蒙版**，图块/搜索栏/圆点自动换成白色玻璃；深色下仍压黑蒙版
 - [ ] 导出 JSON 与 zip；导入覆盖后数据一致；`pre-import.json` 只有一份且可下载
 - [ ] PWA：在 HTTPS 访问下可安装、更新有提示、离线可打开；在 http 访问下**优雅降级不报错**
 

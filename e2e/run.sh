@@ -21,6 +21,7 @@ fi
 
 echo "==> 构建前端 + 后端"
 npm --prefix web run build >/dev/null
+mkdir -p internal/web/dist && touch internal/web/dist/.gitkeep  # vite 会清空 outDir，占位补回来
 CGO_ENABLED=0 go build -o bin/nav ./cmd/nav
 
 FAILED=0

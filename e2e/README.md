@@ -14,7 +14,8 @@ make e2e          # = ./e2e/run.sh
 `node debug-drag.mjs` 是拖拽诊断脚本（逐步打印 DOM 顺序、元素 transform、以及是否发出 PUT）。
 
 用例：`smoke.mjs`（基础交互与排序）、`folders.mjs`（合并/小夹/大夹）、`pages.mjs`（多页与跨页拖拽）、
-`appearance.mjs`（白天/黑夜主题、每页壁纸、换页平移动画）。
+`icons.mjs`（图标抓取/候选/纯色/上传/重置/撑满与悬停文字）、`settings.mjs`（设置面板与图块形状）、
+`transfer.mjs`（导入导出）、`pwa.mjs`、`appearance.mjs`（白天/黑夜主题、每页壁纸、蒙版与玻璃、换页平移）。
 每个用例各有独立的数据目录与端口，互不污染，也能单独跑：
 
 ```bash
@@ -57,6 +58,19 @@ NAV_BASE=http://127.0.0.1:18100 node e2e/pages.mjs   # 需先自行起一个后�
 
 6. 排查这类问题的最快手段是打开库自带的调试模式：`setDebugMode(true)`
    （`svelte-dnd-action` 导出），它会直接把拒绝/判定理由打在 console 里。
+
+7. **`transform` 过渡跑在合成器线程上，headless 下读不到"动画中的值"。**
+   `getComputedStyle(el).transform` 与 `getBoundingClientRect()` 有时反映、有时**整段停在
+   起点或终点**（实测同一个动画两个方向表现还不一样），拿它做断言就是随机失败。
+   可靠的做法是断言**主线程必然看得到的东西**：inline `style` 的内容（起点 ±100% → 终点 0%）、
+   `transition-property/duration`、Web Animations API（`el.getAnimations()` 的
+   `CSSTransition.transitionProperty` 与 `currentTime`）、以及快照/轨道元素在不在。
+   `probe-slide.mjs` 就是按这个原则写的线上实测脚本。
+
+8. **写错表的 bug 在刷新之前看不出来。**
+   "设为本页"曾经把 `wallpaper_mode/wallpaper_id` 写进**全局 settings**——而这两个键
+   正好也在 settings 白名单里，于是写入**成功**、UI 立刻显示正确，只有刷新后才被服务端打回。
+   同类问题（手选图标记在哪一列）也要**读服务端状态**断言，不能只看界面。
 
 7. **transform 过渡跑在合成器线程，headless 下读不到中间值。**
    `getComputedStyle(el).transform` 与 `el.getBoundingClientRect()` 在动画播放期间

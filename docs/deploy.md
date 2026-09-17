@@ -40,7 +40,7 @@ ss -tlnp | grep -E ':(8090)\b' || echo "8090 空闲"
 ## 1. 一键部署
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.1.2/deploy/install.sh -o /tmp/my_nav-install.sh
+curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.0/deploy/install.sh -o /tmp/my_nav-install.sh
 sudo bash /tmp/my_nav-install.sh
 ```
 
@@ -64,8 +64,8 @@ sudo IMAGE=ghcr.io/ffdkj/my_nav:edge bash /tmp/my_nav-install.sh   # 用最新�
 ```bash
 sudo mkdir -p /opt/1panel/docker/compose/my_nav/data
 cd /opt/1panel/docker/compose/my_nav
-sudo curl -fsSLO https://raw.githubusercontent.com/ffdkj/my_nav/v0.1.2/deploy/compose.yaml
-sudo curl -fsSL  https://raw.githubusercontent.com/ffdkj/my_nav/v0.1.2/deploy/.env.example -o .env
+sudo curl -fsSLO https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.0/deploy/compose.yaml
+sudo curl -fsSL  https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.0/deploy/.env.example -o .env
 sudo sed -i 's/^NAV_BIND_IP=.*/NAV_BIND_IP=100.70.0.29/' .env
 sudo docker compose up -d    # 或 sudo docker-compose up -d
 ```
@@ -204,7 +204,7 @@ sudo NETWORK=host bash /tmp/my_nav-install.sh
 
 | 症状 | 原因 / 处理 |
 |---|---|
-| `manifest unknown` | 镜像标签写错。可用标签：`0.1.2`、`0.1`、`latest`、`edge`（`edge` 跟 main 分支） |
+| `manifest unknown` | 镜像标签写错。可用标签：`0.2.0`、`0.2`、`latest`、`edge`（`edge` 跟 main 分支） |
 | 容器一直 `starting` | 看 `docker logs my_nav`；多半是 `/data` 权限（镜像以 uid 65532 运行，宿主目录需要可写） |
 | 页面能开但没有图标 | **先看第 6.5 节**：多半是容器没有出网，用 `NETWORK=host` 重装即可。临时也可上传本地图标 |
 | 端口占用 | `sudo NAV_PORT=8091 bash install.sh` |

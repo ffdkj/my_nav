@@ -48,6 +48,9 @@ web-dev: ## 只起 Vite
 .PHONY: web-build
 web-build: ## 构建前端 → internal/web/dist（会被 go:embed 打包）
 	npm --prefix $(WEB) run build
+	@# vite 的 emptyOutDir 会把 dist 清空，占位文件必须补回来：
+	@# go:embed 不接受空目录，fresh clone 直接构建会失败；顺便也让工作区不脏。
+	@mkdir -p internal/web/dist && touch internal/web/dist/.gitkeep
 
 .PHONY: build
 build: web-build ## 构建单二进制（前端已内嵌）

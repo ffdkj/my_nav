@@ -1,20 +1,38 @@
 name: release
 
 # 产物：ghcr.io/ffdkj/my_nav
-#   - push 到 main        → :edge
-#   - 打 tag v1.2.3       → :1.2.3, :1.2, :latest
+#   打 tag v1.2.3          → :1.2.3, :1.2, :latest（构建镜像）
+#   手动 workflow_dispatch → 同 tag 规则（构建镜像）
+#   push 到 main / PR      → **只跑测试**，不构建镜像
+#
+# 为什么这么改：早先 push 到 main 也会跑双架构镜像构建，等于每次提交都烧一次
+# 几分钟的 CI + GHA 缓存写入，而我们真正需要镜像的时刻只有"要部署的时候"。
+# 测试很便宜（go vet/test + svelte-check + vite build），保留在 push/PR 上兜底。
+#
+# paths-ignore 只跳过纯文档改动。GitHub 明确说明 **path filters 不作用于 tag push**，
+# 所以打 tag 时不会被它拦掉（否则会踩"发了版却没有镜像"的坑）。
 #
 # 注意：分支构建的标签由 metadata-action 决定。早先只写了 type=ref,event=branch，
 # 它会产出 **:main** 而不是注释里说的 :edge —— 部署用的标签名必须与这里一致，
-# 否则 pull 会得到 MANIFEST_UNKNOWN。
+# 否则 pull 会得到 MANIFEST_UNKNOWN。现在分支不再构建镜像，这条只影响手动触发。
 # 两个架构都构建，因为开发机是 amd64 而部署目标是 arm64（Cortex-A55）。
 
 on:
   push:
     branches: [main]
     tags: ['v*']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
   workflow_dispatch:
 
 env:
@@ -52,7 +70,8 @@ jobs:
 
   image:
     needs: test
-    if: github.event_name != 'pull_request'
+    # 只在真要发版时构建镜像：tag 或手动触发（push/PR 只跑上面的 test）
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
