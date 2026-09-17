@@ -3,6 +3,9 @@
 -- name: CreateFolder :exec
 INSERT INTO folders (id, name, size) VALUES (?, ?, ?);
 
+-- name: GetFolder :one
+SELECT * FROM folders WHERE id = ?;
+
 -- name: UpdateFolder :exec
 UPDATE folders SET name = ?, size = ? WHERE id = ?;
 

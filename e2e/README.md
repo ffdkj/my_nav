@@ -13,6 +13,13 @@ make e2e          # = ./e2e/run.sh
 
 `node debug-drag.mjs` 是拖拽诊断脚本（逐步打印 DOM 顺序、元素 transform、以及是否发出 PUT）。
 
+用例：`smoke.mjs`（基础交互与排序）、`folders.mjs`（合并/小夹/大夹）、`pages.mjs`（多页与跨页拖拽）。
+每个用例各有独立的数据目录与端口，互不污染，也能单独跑：
+
+```bash
+NAV_BASE=http://127.0.0.1:18100 node e2e/pages.mjs   # 需先自行起一个后端
+```
+
 ## 已知坑（都已在代码里修掉，改这里时别踩回去）
 
 1. **传给 `use:dndzone` 的数组，每个元素顶层必须有 `id`。**
@@ -39,5 +46,11 @@ make e2e          # = ./e2e/run.sh
    曾经两个脚本共用一个库，`smoke` 加的 GitHub 和 `folders` 加的撞名，
    导致 `getByRole('link')` 命中 2 个元素而失败——这是测试隔离问题，不是产品 bug。
 
-5. 排查这类问题的最快手段是打开库自带的调试模式：`setDebugMode(true)`
+5. **取消长按必须监听 `window`，不能只绑在元素上。**
+   拖拽期间库会把原元素隐藏、改用挂在 `document.body` 上的克隆，
+   绑在 `<li>` 上的 `pointermove` 再也收不到事件，于是"一动就取消长按"失效——
+   表现为**跨页 carry / 普通拖拽到 800ms 时凭空弹出上下文菜单**（而且菜单遮罩会挡住后续点击，
+   让别的用例连带失败）。这是从截图里肉眼发现的，断言没覆盖到，现已加回归断言。
+
+6. 排查这类问题的最快手段是打开库自带的调试模式：`setDebugMode(true)`
    （`svelte-dnd-action` 导出），它会直接把拒绝/判定理由打在 console 里。

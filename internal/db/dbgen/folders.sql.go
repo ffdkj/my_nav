@@ -35,6 +35,22 @@ func (q *Queries) DeleteFolder(ctx context.Context, id string) error {
 	return err
 }
 
+const getFolder = `-- name: GetFolder :one
+SELECT id, name, size, created_at FROM folders WHERE id = ?
+`
+
+func (q *Queries) GetFolder(ctx context.Context, id string) (Folder, error) {
+	row := q.db.QueryRowContext(ctx, getFolder, id)
+	var i Folder
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Size,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listEmptyFoldersForPage = `-- name: ListEmptyFoldersForPage :many
 SELECT f.id FROM folders f
 JOIN placements p ON p.folder_id = f.id

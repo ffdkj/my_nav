@@ -338,6 +338,196 @@ class BoardStore {
     await this.commit()
   }
 
+  // ---------- 页面管理 ----------
+
+  async refreshPages() {
+    const data = await api.get<{ pages: Page[] }>('/api/pages/')
+    this.pages = data.pages
+  }
+
+  async #uniqueSlug(name: string): Promise<string> {
+    const base =
+      (name || 'page')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'page'
+    const taken = new Set(this.pages.map((p) => p.slug))
+    let slug = base
+    let n = 2
+    while (taken.has(slug)) slug = `${base}-${n++}`
+    return slug
+  }
+
+  async createPage(name: string): Promise<Page | null> {
+    const id = uuidv7()
+    const slug = await this.#uniqueSlug(name)
+    try {
+      const page = await api.post<Page>('/api/pages/', { id, slug, name: name || '新页面' })
+      await this.refreshPages()
+      await this.selectPage(page.id)
+      return page
+    } catch (err) {
+      ui.error('新建页面失败：' + (err instanceof Error ? err.message : String(err)))
+      return null
+    }
+  }
+
+  async renamePage(id: string, name: string) {
+    try {
+      await api.patch(`/api/pages/${id}`, { name })
+      const local = this.pages.find((p) => p.id === id)
+      if (local) local.name = name
+      if (this.page?.id === id) this.page.name = name
+    } catch (err) {
+      ui.error('重命名失败：' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async deletePage(id: string) {
+    try {
+      await api.del(`/api/pages/${id}`)
+      const wasCurrent = this.page?.id === id
+      await this.refreshPages()
+      if (wasCurrent && this.pages[0]) await this.selectPage(this.pages[0].id)
+    } catch (err) {
+      ui.error('删除页面失败：' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async reorderPages(orderedIds: string[]) {
+    try {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await api.patch(`/api/pages/${orderedIds[i]}`, { sort_order: i })
+      }
+      await this.refreshPages()
+    } catch (err) {
+      ui.error('页面排序失败：' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  adjacentPage(dir: -1 | 1): Page | undefined {
+    if (!this.page) return undefined
+    const i = this.pages.findIndex((p) => p.id === this.page?.id)
+    if (i < 0) return undefined
+    return this.pages[i + dir]
+  }
+
+  get pageIndex(): number {
+    if (!this.page) return 0
+    return Math.max(0, this.pages.findIndex((p) => p.id === this.page?.id))
+  }
+
+  // ---------- 跨页拖拽 carry（Q28b 完整版）----------
+
+  /**
+   * 拖到屏幕边缘翻页时进入 carry 模式：
+   *  1) 记下被搬的项（数据仍在源页，尚未落库）
+   *  2) 合成一次 mouseup 让拖拽库体面收场（它监听的是 window 的 mouseup）
+   *  3) 切到目标页，由漂浮层接管指针跟随，松手时走 /api/board/move 原子落库
+   * 之所以不让库继续跨页拖：它的 zone 绑定在当前页的 DOM 上，
+   * 换页会让它缓存的元素全部失效。
+   */
+  carry = $state<{ itemId: string; item: Item; fromPageId: string } | null>(null)
+
+  /** 网格几何（由 Grid 测量后写入）：漂浮层据此把指针位置换算成落点下标 */
+  gridMetrics = $state({ left: 0, top: 0, tile: 96, gap: 16, cols: GRID_COLS })
+
+  beginCarry(itemId: string, toPageId: string): boolean {
+    const item = this.itemById(itemId)
+    if (!item || !this.page) return false
+    this.carry = {
+      itemId,
+      item: { ...item, children: [...item.children] },
+      fromPageId: this.page.id,
+    }
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }))
+    void this.selectPage(toPageId)
+    return true
+  }
+
+  cancelCarry() {
+    this.carry = null
+  }
+
+  /** 在目标页上按指针位置落位（index 由漂浮层算好） */
+  async finishCarry(index: number) {
+    const carry = this.carry
+    const target = this.page
+    if (!carry || !target) return
+    this.carry = null
+
+    const seq = [...this.sequence]
+    const at = Math.max(0, Math.min(index, seq.length))
+    seq.splice(at, 0, carry.item)
+    const items = this.#layoutPayload(seq)
+    if (!items) return
+
+    try {
+      const board = await api.post<Board>('/api/board/move', {
+        from_page_id: carry.fromPageId,
+        to_page_id: target.id,
+        item_id: carry.itemId,
+        items,
+      })
+      this.applyBoard(board)
+      await this.refreshPages()
+      ui.success('已移动到「' + board.page.name + '」')
+    } catch (err) {
+      ui.error('移动失败：' + (err instanceof Error ? err.message : String(err)))
+      await this.reload()
+    }
+  }
+
+  /** 非拖拽路径：上下文菜单里的「移动到…」（追加到目标页末尾） */
+  async moveItemToPage(itemId: string, toPageId: string) {
+    const item = this.itemById(itemId)
+    if (!item || !this.page || toPageId === this.page.id) return
+    try {
+      const targetBoard = await api.get<Board>(`/api/pages/${toPageId}/board`)
+      const seq = [...targetBoard.items]
+        .sort((a, b) => a.row - b.row || a.col - b.col)
+        .map((it): Item => ({
+          id: it.id,
+          kind: it.kind,
+          link_id: it.link_id,
+          folder_id: it.folder_id,
+          size: (it.size ?? 1) as 1 | 2,
+          children: it.children ?? [],
+        }))
+      seq.push(item)
+      const items = this.#layoutPayload(seq)
+      if (!items) return
+      const board = await api.post<Board>('/api/board/move', {
+        from_page_id: this.page.id,
+        to_page_id: toPageId,
+        item_id: itemId,
+        items,
+      })
+      await this.refreshPages()
+      // 当前停留在源页：重新读源页（revision 已被服务端 +1）
+      await this.reload()
+      ui.success('已移动到「' + board.page.name + '」')
+    } catch (err) {
+      ui.error('移动失败：' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  /** 把一条序列打包成服务端要的 items 数组（含 col/row/size/children） */
+  #layoutPayload(seq: Item[]) {
+    const placed = pack(seq, GRID_COLS, (i) => (i.kind === 'folder' ? (i.size ?? 1) : 1))
+    return placed.map((p) => ({
+      id: p.item.id,
+      kind: p.item.kind,
+      link_id: p.item.link_id,
+      folder_id: p.item.folder_id,
+      size: p.item.kind === 'folder' ? p.span : undefined,
+      col: p.col,
+      row: p.row,
+      children: p.item.children,
+    }))
+  }
+
   // ---------- 提交 ----------
 
   private async commit() {
@@ -404,6 +594,12 @@ class BoardStore {
   get mergeDwellMs(): number {
     const raw = Number(this.settings['merge_dwell_ms'] ?? '500')
     return Number.isFinite(raw) && raw >= 0 ? raw : 500
+  }
+
+  /** 拖到屏幕边缘后翻页的悬停阈值（毫秒），来自服务端设置，默认 150 */
+  get pageFlipEdgeMs(): number {
+    const raw = Number(this.settings['page_flip_edge_ms'] ?? '150')
+    return Number.isFinite(raw) && raw >= 0 ? raw : 150
   }
 
   get defaultEngine(): SearchEngine | undefined {

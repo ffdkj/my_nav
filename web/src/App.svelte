@@ -1,9 +1,13 @@
 <script lang="ts">
   import { Moon, Sun } from '@lucide/svelte'
+  import CarryLayer from '$lib/components/CarryLayer.svelte'
+  import ContextMenu, { type MenuTarget } from '$lib/components/ContextMenu.svelte'
   import FolderDialog from '$lib/components/FolderDialog.svelte'
   import FolderModal from '$lib/components/FolderModal.svelte'
   import Grid from '$lib/components/Grid.svelte'
   import LinkDialog from '$lib/components/LinkDialog.svelte'
+  import PageDots from '$lib/components/PageDots.svelte'
+  import PageManager from '$lib/components/PageManager.svelte'
   import SearchBar from '$lib/components/SearchBar.svelte'
   import Toasts from '$lib/components/Toasts.svelte'
   import { api } from '$lib/api'
@@ -16,6 +20,8 @@
   let editing = $state<Link | null>(null)
   let openFolder = $state<Item | null>(null)
   let editFolder = $state<Item | null>(null)
+  let managerOpen = $state(false)
+  let menu = $state<MenuTarget | null>(null)
 
   let started = false
   $effect(() => {
@@ -28,6 +34,60 @@
   $effect(() => {
     document.documentElement.classList.toggle('dark', dark)
   })
+
+  // ---------- 翻页 ----------
+
+  function flip(dir: -1 | 1): boolean {
+    const p = board.adjacentPage(dir)
+    if (!p) return false
+    void board.selectPage(p.id)
+    return true
+  }
+
+  // 滚轮：累积超过阈值翻一页，400ms 内不重复触发
+  let wheelAcc = 0
+  let wheelLockUntil = 0
+  function onwheel(e: WheelEvent) {
+    if (board.carry || board.pages.length < 2) return
+    const now = Date.now()
+    if (now < wheelLockUntil) return
+    wheelAcc += e.deltaY
+    if (Math.abs(wheelAcc) >= 120) {
+      if (flip(wheelAcc > 0 ? 1 : -1)) {
+        wheelAcc = 0
+        wheelLockUntil = now + 400
+      }
+    }
+  }
+
+  // 手势横滑：只在非图块区域起手，横向位移 >60 且纵向 <40 才算翻页
+  let swipeStart: { x: number; y: number } | null = null
+  function onpointerdown(e: PointerEvent) {
+    if ((e.target as HTMLElement | null)?.closest('[data-tile]')) return
+    swipeStart = { x: e.clientX, y: e.clientY }
+  }
+  function onpointerup(e: PointerEvent) {
+    if (!swipeStart || board.carry) {
+      swipeStart = null
+      return
+    }
+    const dx = e.clientX - swipeStart.x
+    const dy = e.clientY - swipeStart.y
+    swipeStart = null
+    if (Math.abs(dx) > 60 && Math.abs(dy) < 40) flip(dx < 0 ? 1 : -1)
+  }
+
+  // 拖拽到屏幕左右边缘 → 翻页并进入跨页 carry
+  function handleEdge(dir: -1 | 1, itemId: string) {
+    const p = board.adjacentPage(dir)
+    if (!p) {
+      ui.info(dir === 1 ? '已经是最后一页' : '已经是第一页')
+      return
+    }
+    board.beginCarry(itemId, p.id)
+  }
+
+  // ---------- 图标操作 ----------
 
   function openAdd() {
     editing = null
@@ -70,16 +130,29 @@
     if (!window.confirm(`确定删除「${name}」吗？`)) return
     void board.removeItem(item.id)
   }
+
+  function onkeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      menu = null
+      if (board.carry) board.cancelCarry()
+    }
+  }
 </script>
 
-<main class="relative min-h-dvh">
-  <!-- 壁纸层（M6 接入真实壁纸，这里先给一个可用的渐变兜底） -->
+<svelte:window onkeydown={onkeydown} />
+
+<main
+  class="relative min-h-dvh"
+  onwheel={onwheel}
+  onpointerdown={onpointerdown}
+  onpointerup={onpointerup}
+>
   <div
     class="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_10%,#16203a,transparent_55%),radial-gradient(circle_at_80%_0%,#0d2a4a,transparent_45%)]"
     aria-hidden="true"
   ></div>
 
-  <div class="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8">
+  <div class="mx-auto flex min-h-dvh max-w-6xl flex-col gap-6 px-4 py-8">
     <header class="flex items-center gap-3">
       <h1 class="shrink-0 text-lg font-semibold tracking-tight">my_nav</h1>
       <div class="flex flex-1 justify-center">
@@ -101,26 +174,34 @@
         · {board.sequence.length} 个图标
         {#if board.status === 'saving'}· 保存中…{/if}
         {#if board.status === 'loading'}· 加载中…{/if}
+        {#if board.carry}· 跨页移动中，松手放下{/if}
       </p>
     {/if}
 
-    {#if board.status === 'loading' && board.sequence.length === 0}
-      <p class="py-20 text-center text-sm text-white/50">加载中…</p>
-    {:else}
-      <Grid
-        onadd={openAdd}
-        onedit={openEdit}
-        ondelete={confirmDelete}
-        onopenfolder={(item) => (openFolder = item)}
-      />
-    {/if}
-
-    <footer class="pt-4 text-xs text-white/30">
-      {#if board.lastError}
-        上次操作失败：{board.lastError}
+    <div class="flex-1">
+      {#if board.status === 'loading' && board.sequence.length === 0}
+        <p class="py-20 text-center text-sm text-white/50">加载中…</p>
       {:else}
-        M3 · 拖拽吸附 / 悬停 {board.mergeDwellMs}ms 合并为文件夹 / 小夹模态 / 大夹 2×2 直接可点
+        <Grid
+          onadd={openAdd}
+          onedit={openEdit}
+          ondelete={confirmDelete}
+          onopenfolder={(item) => (openFolder = item)}
+          onmenu={(target) => (menu = target)}
+          onedge={handleEdge}
+        />
       {/if}
+    </div>
+
+    <footer class="flex flex-col items-center gap-3 pt-4">
+      <PageDots onmanage={() => (managerOpen = true)} />
+      <p class="text-xs text-white/30">
+        {#if board.lastError}
+          上次操作失败：{board.lastError}
+        {:else}
+          M4 · 圆点/滚轮/横滑/拖到边缘翻页 · 长按 800ms 或右键出菜单
+        {/if}
+      </p>
     </footer>
   </div>
 </main>
@@ -134,5 +215,16 @@
 
 <FolderModal item={openFolder} onclose={() => (openFolder = null)} />
 <FolderDialog item={editFolder} onclose={() => (editFolder = null)} />
+<PageManager open={managerOpen} onclose={() => (managerOpen = false)} />
+<ContextMenu
+  target={menu}
+  onclose={() => (menu = null)}
+  onedit={openEdit}
+  ondelete={(item) => {
+    menu = null
+    confirmDelete(item)
+  }}
+/>
+<CarryLayer />
 
 <Toasts />

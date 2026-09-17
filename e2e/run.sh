@@ -42,6 +42,7 @@ run_case() { # 名称 端口 脚本
 
 run_case basic   "$BASE_PORT"       smoke.mjs
 run_case folders "$((BASE_PORT+1))" folders.mjs
+run_case pages   "$((BASE_PORT+2))" pages.mjs
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "全部用例通过"; else echo "有用例失败"; fi

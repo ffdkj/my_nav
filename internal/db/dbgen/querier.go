@@ -21,9 +21,11 @@ type Querier interface {
 	DeleteLink(ctx context.Context, id string) error
 	DeletePage(ctx context.Context, id string) error
 	DeletePlacementsForPage(ctx context.Context, pageID string) error
+	GetFolder(ctx context.Context, id string) (Folder, error)
 	GetLink(ctx context.Context, id string) (Link, error)
 	GetPage(ctx context.Context, id string) (Page, error)
 	GetPageBySlug(ctx context.Context, slug string) (Page, error)
+	GetPlacement(ctx context.Context, id string) (Placement, error)
 	ListAllLinksWithPage(ctx context.Context) ([]ListAllLinksWithPageRow, error)
 	// Folders that hold no items - used to enforce "empty folders are deleted".
 	ListEmptyFoldersForPage(ctx context.Context, pageID string) ([]string, error)
@@ -40,10 +42,14 @@ type Querier interface {
 	// settings.sql - key/value settings (keep this file pure ASCII, see 001_init.sql header)
 	ListSettings(ctx context.Context) ([]Setting, error)
 	MaxPageSortOrder(ctx context.Context) (interface{}, error)
+	MoveFolderChildren(ctx context.Context, arg MoveFolderChildrenParams) error
+	MovePlacement(ctx context.Context, arg MovePlacementParams) error
+	SetPlacementSort(ctx context.Context, arg SetPlacementSortParams) error
 	UpdateFolder(ctx context.Context, arg UpdateFolderParams) error
 	UpdateLink(ctx context.Context, arg UpdateLinkParams) error
 	UpdatePage(ctx context.Context, arg UpdatePageParams) error
 	UpdatePageSortOrder(ctx context.Context, arg UpdatePageSortOrderParams) error
+	UpdatePlacementPos(ctx context.Context, arg UpdatePlacementPosParams) error
 	UpsertSetting(ctx context.Context, arg UpsertSettingParams) error
 }
 

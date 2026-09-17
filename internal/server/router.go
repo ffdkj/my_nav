@@ -43,6 +43,7 @@ func New(cfg config.Config, svc *nav.Service) http.Handler {
 		api.Get("/bootstrap", s.h.bootstrap)
 		api.Get("/settings", s.h.getSettings)
 		api.Patch("/settings", s.h.patchSettings)
+		api.Post("/board/move", s.h.moveItem)
 		api.Get("/links", s.h.listLinks)
 		api.Patch("/links/{linkID}", s.h.updateLink)
 

@@ -55,3 +55,16 @@ func (h *handlers) patchSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, settings)
 }
+
+func (h *handlers) moveItem(w http.ResponseWriter, r *http.Request) {
+	var in nav.MoveItemInput
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	board, err := h.svc.MoveItem(r.Context(), in)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, board)
+}

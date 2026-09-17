@@ -59,6 +59,26 @@ func (q *Queries) DeletePlacementsForPage(ctx context.Context, pageID string) er
 	return err
 }
 
+const getPlacement = `-- name: GetPlacement :one
+SELECT id, page_id, folder_id, link_id, in_folder, col, "row", sort_order FROM placements WHERE id = ?
+`
+
+func (q *Queries) GetPlacement(ctx context.Context, id string) (Placement, error) {
+	row := q.db.QueryRowContext(ctx, getPlacement, id)
+	var i Placement
+	err := row.Scan(
+		&i.ID,
+		&i.PageID,
+		&i.FolderID,
+		&i.LinkID,
+		&i.InFolder,
+		&i.Col,
+		&i.Row,
+		&i.SortOrder,
+	)
+	return i, err
+}
+
 const listPlacementsForPage = `-- name: ListPlacementsForPage :many
 
 SELECT id, page_id, folder_id, link_id, in_folder, col, "row", sort_order FROM placements WHERE page_id = ? ORDER BY in_folder IS NOT NULL, sort_order, row, col
@@ -95,4 +115,68 @@ func (q *Queries) ListPlacementsForPage(ctx context.Context, pageID string) ([]P
 		return nil, err
 	}
 	return items, nil
+}
+
+const moveFolderChildren = `-- name: MoveFolderChildren :exec
+UPDATE placements SET page_id = ? WHERE in_folder = ?
+`
+
+type MoveFolderChildrenParams struct {
+	PageID   string  `json:"page_id"`
+	InFolder *string `json:"in_folder"`
+}
+
+func (q *Queries) MoveFolderChildren(ctx context.Context, arg MoveFolderChildrenParams) error {
+	_, err := q.db.ExecContext(ctx, moveFolderChildren, arg.PageID, arg.InFolder)
+	return err
+}
+
+const movePlacement = `-- name: MovePlacement :exec
+UPDATE placements SET page_id = ?, col = ?, row = ? WHERE id = ?
+`
+
+type MovePlacementParams struct {
+	PageID string `json:"page_id"`
+	Col    int64  `json:"col"`
+	Row    int64  `json:"row"`
+	ID     string `json:"id"`
+}
+
+func (q *Queries) MovePlacement(ctx context.Context, arg MovePlacementParams) error {
+	_, err := q.db.ExecContext(ctx, movePlacement,
+		arg.PageID,
+		arg.Col,
+		arg.Row,
+		arg.ID,
+	)
+	return err
+}
+
+const setPlacementSort = `-- name: SetPlacementSort :exec
+UPDATE placements SET sort_order = ? WHERE id = ?
+`
+
+type SetPlacementSortParams struct {
+	SortOrder int64  `json:"sort_order"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) SetPlacementSort(ctx context.Context, arg SetPlacementSortParams) error {
+	_, err := q.db.ExecContext(ctx, setPlacementSort, arg.SortOrder, arg.ID)
+	return err
+}
+
+const updatePlacementPos = `-- name: UpdatePlacementPos :exec
+UPDATE placements SET col = ?, row = ? WHERE id = ?
+`
+
+type UpdatePlacementPosParams struct {
+	Col int64  `json:"col"`
+	Row int64  `json:"row"`
+	ID  string `json:"id"`
+}
+
+func (q *Queries) UpdatePlacementPos(ctx context.Context, arg UpdatePlacementPosParams) error {
+	_, err := q.db.ExecContext(ctx, updatePlacementPos, arg.Col, arg.Row, arg.ID)
+	return err
 }

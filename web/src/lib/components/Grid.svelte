@@ -2,6 +2,7 @@
   import { untrack } from 'svelte'
   import { dndzone, TRIGGERS, SHADOW_PLACEHOLDER_ITEM_ID, type DndEvent } from 'svelte-dnd-action'
   import Tile from '$lib/components/Tile.svelte'
+  import type { MenuTarget } from '$lib/components/ContextMenu.svelte'
   import { pack, rowCount } from '$lib/layout'
   import { board, GRID_COLS } from '$lib/store/board.svelte'
   import type { Item } from '$lib/types'
@@ -11,8 +12,10 @@
     onedit: (item: Item) => void
     ondelete: (item: Item) => void
     onopenfolder: (item: Item) => void
+    onmenu: (target: MenuTarget) => void
+    onedge: (dir: -1 | 1, itemId: string) => void
   }
-  let { onadd, onedit, ondelete, onopenfolder }: Props = $props()
+  let { onadd, onedit, ondelete, onopenfolder, onmenu, onedge }: Props = $props()
 
   let container = $state<HTMLElement | null>(null)
   let probe = $state<HTMLElement | null>(null)
@@ -22,9 +25,9 @@
 
   const spanOf = (item: Item) => (item.kind === 'folder' ? (item.size ?? 1) : 1)
 
-  // 两个必须遵守的约束（都是实测踩出来的，详见 e2e/README.md）：
-  //  1) 传给 dndzone 的数组里每个元素必须**顶层带 id**，位置信息只能旁挂。
-  //  2) 承载 dndzone 的元素必须**有真实布局盒**（不能用 display: contents）。
+  // 两个必须遵守的约束（都实测踩过，详见 e2e/README.md）：
+  //  1) 传给 dndzone 的数组里每个元素必须顶层带 id，位置信息只能旁挂
+  //  2) 承载 dndzone 的元素必须有真实布局盒（不能用 display: contents）
   let zoneItems = $state<Item[]>(untrack(() => [...board.sequence]))
   $effect(() => {
     zoneItems = [...board.sequence]
@@ -42,12 +45,52 @@
   const gridHeight = $derived(rows * (tilePx + gapPx) - gapPx)
 
   // ---------- 合并（悬停 dwell）----------
-  // 库只给 {trigger, id, source}，没有任何"悬停在哪个图块上"的信息，
-  // 所以命中判定由我们自己用**与渲染完全相同的网格数学**算出来。
   let draggedId: string | null = $state(null)
   let mergeArmedFor: string | null = $state(null)
   let hoverTarget: string | null = null
   let dwellTimer: ReturnType<typeof setTimeout> | undefined
+
+  // 命中判定用**拖拽开始那一刻**的布局快照：库会实时重排，
+  // 拖 A 到 B 上时 A 的 shadow 就落在 B 的格子里，实时查表永远查到自己。
+  let hitCells: Array<{ id: string; col: number; row: number; span: number }> = []
+
+  function captureHitCells() {
+    hitCells = packedAll
+      .filter((p) => p.item.id !== ADD_ID)
+      .map((p) => ({ id: p.item.id, col: p.col, row: p.row, span: p.span }))
+  }
+
+  // ---------- 屏幕边缘翻页 ----------
+  const EDGE_PX = 60
+  let edgeDir: -1 | 1 | null = null
+  let edgeTimer: ReturnType<typeof setTimeout> | undefined
+
+  function clearEdge() {
+    if (edgeTimer) clearTimeout(edgeTimer)
+    edgeTimer = undefined
+    edgeDir = null
+  }
+
+  // ---------- 长按菜单 ----------
+  const LONG_PRESS_MS = 800
+  let pressTimer: ReturnType<typeof setTimeout> | undefined
+  let pressStart: { x: number; y: number } | null = null
+
+  function clearPress() {
+    if (pressTimer) clearTimeout(pressTimer)
+    pressTimer = undefined
+    pressStart = null
+    window.removeEventListener('pointermove', onPressMove)
+  }
+
+  // ⚠️ 取消长按必须监听 **window**，不能只绑在 <li> 上：
+  // 拖拽期间库会把原元素隐藏、改用挂在 body 上的克隆，
+  // 绑在 li 上的 pointermove 再也收不到事件，于是"一动就取消长按"失效，
+  // 结果拖拽/跨页 carry 到 800ms 时会莫名弹出上下文菜单（已在 e2e 截图里抓到）。
+  function onPressMove(e: PointerEvent) {
+    if (!pressStart || !pressTimer) return
+    if (Math.abs(e.clientX - pressStart.x) > 6 || Math.abs(e.clientY - pressStart.y) > 6) clearPress()
+  }
 
   function clearDwell() {
     if (dwellTimer) clearTimeout(dwellTimer)
@@ -58,18 +101,6 @@
     clearDwell()
     hoverTarget = null
     mergeArmedFor = null
-  }
-
-  // ⚠️ 命中判定必须用**拖拽开始那一刻**的布局快照。
-  // 库在拖拽过程中会实时重排：把 A 拖到 B 上时，A 的 shadow 占位就落在 B 的格子里，
-  // 于是"指针当前所在的格子"永远指向自己，永远判定不出合并目标。
-  // 锁定起始布局后，"指针压在 B 原来的格子上" 就是用户心智里的"我悬停在 B 上"。
-  let hitCells: Array<{ id: string; col: number; row: number; span: number }> = []
-
-  function captureHitCells() {
-    hitCells = packedAll
-      .filter((p) => p.item.id !== ADD_ID)
-      .map((p) => ({ id: p.item.id, col: p.col, row: p.row, span: p.span }))
   }
 
   function tileAtPoint(clientX: number, clientY: number): string | null {
@@ -89,9 +120,9 @@
 
   function onPointerMove(ev: PointerEvent) {
     if (!draggedId) return
+
+    // 合并判定
     const id = tileAtPoint(ev.clientX, ev.clientY)
-    // 拖拽期间，被拖项在 zoneItems 里被替换成 shadow 占位（id 固定为
-    // 'id:dnd-shadow-placeholder-0000'），它代表的就是"自己"，不能当成合并目标。
     const isSelf = !id || id === draggedId || id === SHADOW_PLACEHOLDER_ITEM_ID
     if (!isSelf) {
       if (id !== hoverTarget) {
@@ -100,12 +131,27 @@
         clearDwell()
         const candidate = id
         dwellTimer = setTimeout(() => {
-          // 悬停达到阈值 → 武装合并，松手时执行（不在拖拽中途改结构，避免库的状态错乱）
           if (hoverTarget === candidate && draggedId) mergeArmedFor = candidate
         }, board.mergeDwellMs)
       }
     } else {
       resetMerge()
+    }
+
+    // 边缘翻页判定（拖拽中才生效）
+    const dir: -1 | 1 | null =
+      ev.clientX <= EDGE_PX ? -1 : ev.clientX >= window.innerWidth - EDGE_PX ? 1 : null
+    if (dir !== edgeDir) {
+      if (edgeTimer) clearTimeout(edgeTimer)
+      edgeTimer = undefined
+      edgeDir = dir
+      const itemId = draggedId
+      if (dir) {
+        edgeTimer = setTimeout(() => {
+          edgeTimer = undefined
+          if (edgeDir === dir && draggedId && draggedId === itemId) onedge(dir, itemId)
+        }, board.pageFlipEdgeMs)
+      }
     }
   }
 
@@ -127,12 +173,21 @@
       gapPx = parseFloat(getComputedStyle(el).columnGap || '16') || 16
       const width = el.clientWidth || tilePx
       displayCols = Math.max(1, Math.min(GRID_COLS, Math.floor((width + gapPx) / (tilePx + gapPx))))
+      syncMetrics()
+    }
+    const syncMetrics = () => {
+      const rect = el.getBoundingClientRect()
+      board.gridMetrics = { left: rect.left, top: rect.top, tile: tilePx, gap: gapPx, cols: displayCols }
     }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
+    window.addEventListener('scroll', syncMetrics, { passive: true })
+    window.addEventListener('resize', syncMetrics)
     return () => {
       ro.disconnect()
+      window.removeEventListener('scroll', syncMetrics)
+      window.removeEventListener('resize', syncMetrics)
       detachTracking()
     }
   })
@@ -143,6 +198,7 @@
     if (trigger === TRIGGERS.DRAG_STARTED) {
       draggedId = e.detail.info.id
       resetMerge()
+      clearEdge()
       captureHitCells()
       attachTracking()
     }
@@ -152,6 +208,18 @@
     zoneItems = e.detail.items
     detachTracking()
     clearDwell()
+    clearEdge()
+
+    // 跨页 carry 已接管（beginCarry 会合成一次 mouseup 让库收场）：
+    // 这一次 finalize 不能改数据，否则图标会在源页被重排。
+    if (board.carry) {
+      zoneItems = [...board.sequence]
+      draggedId = null
+      hoverTarget = null
+      mergeArmedFor = null
+      hitCells = []
+      return
+    }
 
     const source = draggedId
     const target = mergeArmedFor
@@ -160,13 +228,11 @@
     mergeArmedFor = null
     hitCells = []
 
-    // 悬停达标后松手 = 合并（优先于排序）
     if (source && target && source !== target) {
       void board.mergeItems(source, target)
       return
     }
 
-    // 正常情况下库会把 shadow 换回真实项；若没换回来说明状态异常，直接回读服务端
     const ids = zoneItems.map((i) => i.id).filter((id) => id !== SHADOW_PLACEHOLDER_ITEM_ID)
     if (ids.length !== board.sequence.length) {
       void board.reload()
@@ -177,6 +243,26 @@
       void board.reorder(ids)
     }
   }
+
+  // ---------- 长按 → 上下文菜单 ----------
+  function onItemPointerDown(e: PointerEvent, item: Item) {
+    if (e.button !== 0) return
+    clearPress()
+    pressStart = { x: e.clientX, y: e.clientY }
+    window.addEventListener('pointermove', onPressMove, { passive: true })
+    const target = item
+    pressTimer = setTimeout(() => {
+      pressTimer = undefined
+      // 触屏长按：拖拽库会先在 300ms 起拖，这里先让它体面收场再弹菜单
+      if (draggedId) {
+        window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }))
+      }
+      onmenu({ item: target, x: pressStart?.x ?? e.clientX, y: pressStart?.y ?? e.clientY })
+      pressStart = null
+    }, LONG_PRESS_MS)
+  }
+
 </script>
 
 <div bind:this={container} class="relative w-full" data-cols={displayCols} data-rows={rows}>
@@ -205,8 +291,17 @@
       {@const cell = placement.get(item.id)}
       {#if cell}
         <li
+          data-tile
           class="group relative"
           style="grid-column: {cell.col + 1} / span {cell.span}; grid-row: {cell.row + 1} / span {cell.span};"
+          onpointerdown={(e) => onItemPointerDown(e, item)}
+          onpointerup={clearPress}
+          onpointercancel={clearPress}
+          oncontextmenu={(e) => {
+            e.preventDefault()
+            clearPress()
+            onmenu({ item, x: e.clientX, y: e.clientY })
+          }}
         >
           <Tile
             {item}
