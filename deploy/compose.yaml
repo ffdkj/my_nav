@@ -1,0 +1,32 @@
+# my_nav 生产编排（对应 docs/spec.md §3）
+#
+# 访问方式（当前决策）：容器把 8080 发布到 Tailscale 虚拟 IP 的高位端口，
+# 其他设备直接访问 http://100.70.0.29:8090 。
+#
+# 想升级成 HTTPS（这样 PWA 才能安装），无需改这个文件，
+# 只需在宿主机执行一条命令（见 README「可选：拿到 HTTPS」）：
+#   sudo tailscale serve --bg --https=8443 http://127.0.0.1:8090
+# 并把下面的 NAV_BIND_IP 设为 127.0.0.1（或同时发布两个绑定）。
+
+services:
+  app:
+    image: ghcr.io/ffdkj/my_nav:latest
+    container_name: my_nav
+    restart: unless-stopped
+    environment:
+      NAV_ADDR: ":8080"
+      NAV_DATA_DIR: /data
+      NAV_LOG_LEVEL: info
+    volumes:
+      # 单卷备份全家：nav.db(+wal/shm) / icons / wallpapers / backup
+      # 注意：必须放在本地 ext4（eMMC）；SQLite WAL 在 NFS/CIFS 上会损坏
+      - ./data:/data
+    ports:
+      # 只绑定 Tailscale 虚拟 IP，不暴露到局域网/公网
+      - "${NAV_BIND_IP:-100.70.0.29}:${NAV_PORT:-8090}:8080"
+    # 进一步收紧（可选）：只读根文件系统 + 无特权
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true

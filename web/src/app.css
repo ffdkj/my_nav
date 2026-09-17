@@ -1,0 +1,63 @@
+@import 'tailwindcss';
+
+/* Tailwind v4 的 dark: 默认跟随 prefers-color-scheme；
+   我们需要手动主题切换，所以改成 class 驱动（在 <html> 上加 .dark）。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-surface-900: #070b14;
+  --color-surface-800: #0d1424;
+  --color-surface-700: #16203a;
+  --color-accent-500: #3b82f6;
+  --radius-tile: 1rem;
+}
+
+:root {
+  /* 图块尺寸：桌面 / 平板 / 手机 三档，网格列数 = min(12, floor(可用宽 / (tile + gap))) */
+  --tile: 6rem;
+  --gap: 1rem;
+  --wallpaper-blur: 0px;
+  color-scheme: dark;
+}
+
+@media (max-width: 1024px) {
+  :root {
+    --tile: 5.25rem;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --tile: 4.5rem;
+  }
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-surface-900);
+  color: #e5edff;
+  font-family:
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Noto Sans SC', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* 触屏上拖拽图块时不要弹出系统长按菜单 / 选中文本 */
+[data-tile] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

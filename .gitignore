@@ -1,18 +1,23 @@
 # --- deps / build ---
 node_modules/
-dist/
-build/
+/dist/
+/build/
 .vite/
 *.tsbuildinfo
 
+# 前端产物由 go:embed 消费（CI/Docker 会重新构建），只保留占位文件。
+# 注意：这里必须用 internal/web/dist/* 而不是裸的 dist/，
+# 否则目录本身被排除后，! 规则无法把它里面的 .gitkeep 救回来。
+internal/web/dist/*
+!internal/web/dist/.gitkeep
+
 # --- Go ---
-/nav
 /bin/
 *.test
 *.out
 coverage.*
 
-# --- local runtime data (never commit) ---
+# --- 本地运行时数据（绝不入库）---
 /data/
 *.db
 *.db-wal
@@ -29,9 +34,10 @@ coverage.*
 .vscode/*
 !.vscode/extensions.json
 
-# --- agent / research scratch ---
-.research/
+# --- 工具缓存（本沙箱里 ~/.npm 与 GOPATH 不可写，缓存放仓库内）---
+.npm-cache/
 .gocache/
 .gomodcache/
 .gopath/
+.research/
 _research_verify/

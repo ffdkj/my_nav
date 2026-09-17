@@ -21,7 +21,7 @@
 | # | 决策 | 取值 |
 |---|---|---|
 | 1 | 访问控制 | **零应用认证**（tailnet 内全权限）；不实现 `NAV_READONLY` |
-| 2 | 部署形态 | Go 单容器（`go:embed` 内嵌 SPA）+ **Tailscale 边车自成节点** |
+| 2 | 部署形态 | Go 单容器（`go:embed` 内嵌 SPA），把 8080 发布到 **Tailscale 虚拟 IP 的高位端口**（默认 `100.70.0.29:8090`）；其他设备直接 `http://IP:端口` 访问。**不起 Tailscale 边车、不新增 tailnet 节点、不改现有 Caddy** |
 | 3 | 布局模型 | 整数网格 `(page_id, col, row)`，**12 列制**、行数不限；显示层按屏宽自动折行；拖拽自由 + 松手吸附 |
 | 4 | 多页 | 底部 iOS 圆点；可命名/增删/排序；URL `#/p/<slug>`；壁纸每页独立或跟随全局（设置可切） |
 | 5 | 翻页 | 点圆点 / 滚轮 / 手势横滑 / **拖拽悬停屏幕左右边缘** |
@@ -45,7 +45,9 @@
 | 23 | 落盘位置 | `/opt/1panel/docker/compose/my_nav`（1Panel 可识别管理） |
 | 24 | 管理方式 | 1Panel「容器/编排」界面；compose 文件为唯一事实源，可被面板导入 |
 
-**【待确认】Q29**：编辑态与拖拽门控（见 §11.1）——最后一个开放决策。
+| 25 | 拖拽门控 | **无编辑态**：拖拽随时可用；**触屏必须按住 300ms 才起拖**（鼠标即时），以此消除误触 |
+| 26 | 新增/删除入口 | 网格末尾常驻虚线 `+` 图块；删除 = 长按 800ms 上下文菜单 / 桌面悬停角标 `×` + 确认 |
+| 27 | PWA | 当前 http 访问下**不可安装**（非安全上下文）；组件已按可选实现，升级 HTTPS 后自动生效 |
 
 ---
 
@@ -77,25 +79,28 @@
 ## 3. 部署拓扑
 
 ```
-                 tailnet (WireGuard, MagicDNS: *.tailbae726.ts.net)
-                                   │
-                 https://nav.tailbae726.ts.net  (LE 证书, 自动签发)
-                                   │
-        ┌──────────────────────────┴───────────────────────────┐
-        │  Docker 网络命名空间（compose 项目 my_nav）            │
-        │                                                      │
-        │  ┌────────────────────┐      ┌────────────────────┐  │
-        │  │ tailscale 边车      │      │ app (Go)           │  │
-        │  │ tailscaled 节点     │◀────▶│ 127.0.0.1:8080     │  │
-        │  │ serve → :443 → 8080│      │ /data (volume)     │  │
-        │  └────────────────────┘      └────────────────────┘  │
-        └──────────────────────────────────────────────────────┘
-              app 与边车共享 netns (network_mode: service:tailscale)
-              宿主机不 publish 任何端口；宿主 80/443 由既有 Caddy 独占，互不干扰
+   其他设备（手机/笔记本，同在 tailnet）
+                 │
+                 │  http://100.70.0.29:8090   （或 http://armbian-1.tailbae726.ts.net:8090）
+                 ▼
+        ┌────────────────────────────────────────────┐
+        │  宿主 armbian-1 (aarch64, eMMC ext4)        │
+        │  80/443 由既有 Caddy 独占（vaultwarden 在用）│
+        │                                            │
+        │  ┌──────────────────────────────────────┐  │
+        │  │ 容器 app (Go, distroless, 非 root)    │  │
+        │  │   listen :8080                       │  │
+        │  │   /data ← ./data (bind mount)        │  │
+        │  └──────────────────────────────────────┘  │
+        │        ports: 100.70.0.29:8090 → 8080      │
+        └────────────────────────────────────────────┘
 ```
 
-- **不新增宿主机端口**，不修改既有 Caddy/1Panel/vaultwarden 配置。
-- 边车是**独立 tailnet 节点**（`nav`），与宿主节点 `armbian-1` 并存；HTTPS 证书由边车自动申请。
+- **不新增 tailnet 节点、不改动既有 Caddy/1Panel/vaultwarden**；只占用一个高位端口。
+- **代价（已确认接受）**：`http://` 不是安全上下文 → **Service Worker 不注册、PWA 不可安装**。
+- **可选升级（1 条命令，不改 compose）**：`.env` 把 `NAV_BIND_IP` 改为 `127.0.0.1`，
+  宿主机执行 `sudo tailscale serve --bg --https=8443 http://127.0.0.1:8090`
+  → 得到 `https://armbian-1.tailbae726.ts.net:8443`，PWA 立即可用（证书由 Tailscale 自动签发）。
 - 落盘：`/opt/1panel/docker/compose/my_nav/`（compose + `.env`），数据 `/opt/1panel/docker/compose/my_nav/data/` → 容器 `/data`。
 - 存储：eMMC ext4 本地盘（WAL 安全）；**禁止**把 `/data` 放到 NFS/CIFS。
 - 日志：宿主 `/var/log` 在 zram（重启即失），审计不依赖容器日志。
@@ -372,12 +377,20 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 
 ## 10. 交互状态机
 
-### 10.1 页面级
+### 10.1 页面级（无编辑态；Q29 已定）
 ```
-浏览态 ──(编辑开关/长按空白)──▶ 编辑态 ──(完成/ESC)──▶ 浏览态
-浏览态: 点击链接=跳转; 点击小夹=模态; 点击大夹内图标=跳转; 滚轮/横滑/拖边缘=翻页
-编辑态: 图块可拖动+抖动; 点击=选中(不跳转); 出现删除角标; 圆点区右侧浮出 ⋯
+触屏:  手指按下 ──300ms 未移动──▶ 进入可拖拽（图块抬起放大反馈）
+                       │
+                       ├─ 移动 → 拖拽 / 合并 / 拖到边缘翻页
+                       └─ 继续按住到 800ms 仍不动 → 弹出上下文菜单（编辑 / 删除 / 移动到… / 放大为 2×2）
+鼠标:  按下即拖（`delayTouchStart` 只作用于触屏，符合 svelte-dnd-action 的命名与语义）
+
+常驻交互: 点击链接=跳转; 点击小夹=模态; 点击大夹内图标=跳转; 滚轮/横滑=翻页
+        网格末尾虚线 `+` 图块 = 新增链接
+        桌面端悬停图块右上角浮出 `×` = 删除（带确认）
+        底部圆点区右侧常驻 `⋯` = 页面管理（改名/增删/排序）
 ```
+**取消与安全**：`ESC` / `pointercancel` / 窗口失焦 → 一律取消拖拽并还原，不落盘。
 
 ### 10.2 拖拽与合并（svelte-dnd-action）
 - 外层网格 = 一个 `dndzone` `type:'tile'`；每个文件夹 = 嵌套 `dndzone` `type:'folder-item'`（层级 type 必须不同）。
@@ -423,16 +436,16 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 
 ## 11. 待确认与风险
 
-### 11.1 【待确认】Q29 编辑态与拖拽门控
-- **(A) 拖拽随时可用**：桌面鼠标直接拖；触屏靠 `delayTouchStart`(120–200ms) 区分轻触与长按拖拽。少一步操作，但触屏误触概率高。
-- **(B) 仅编辑态可拖拽**（推荐）：浏览态点"编辑"按钮（或用 `delayTouchStart` 长按 600ms 进入），进入后图块抖动、点击不跳转、显示删除角标与 `⋯`；退出恢复。更防误触、更 iOS。
-- 需一并确定：**新建图标入口**（编辑态末尾一个 "+" 空格子 / 顶部工具栏按钮）与**删除方式**（编辑态角标 × + 确认，不做"拖到垃圾桶"）。
+### 11.1 Q29 拖拽门控（已定：方案 A + 300ms 长按）
+- **无编辑态**。触屏按住 **300ms** 进入可拖拽；鼠标即时拖。参考数值：移动端 300ms、桌面 0ms。
+- 长按继续到 **800ms** 不动 → 上下文菜单（编辑 / 删除 / 移动到… / 放大为 2×2）；移动即转拖拽，不弹菜单。
+- 新增：网格末尾常驻虚线 `+` 图块。删除：上下文菜单 + 桌面悬停 `×`（带确认；删文件夹时询问是否连带删除其内链接）。
+- 实现参数：`svelte-dnd-action` 的 `delayTouchStart: 300`（该选项只作用于触屏）+ `touch-action: manipulation` + `-webkit-touch-callout: none`。
 
-➡️ 推荐 **(B)** + 编辑态末尾 `+` 空格子 + 角标 ×（删除文件夹时确认是否连带删除其内链接）。
-
-### 11.2 【待确认】Q26 补充信息
-- GitHub 仓库地址与可见性（public/private），以及 ghcr.io 镜像名（默认 `ghcr.io/<owner>/my_nav`）。
-- 开发机无 `gh` CLI、Docker 守护进程不可达 → CI 与容器验证都必须由你在有权限的机器/GitHub 上完成。
+### 11.2 Q26 交付信息（已定：GitHub Actions → ghcr.io）
+- 仓库：`https://github.com/ffdkj/my_nav`；镜像：`ghcr.io/ffdkj/my_nav`
+  （`main` → `:edge`；tag `v*` → `:x.y.z` + `:latest`；`linux/amd64` + `linux/arm64` 双架构）。
+- 开发机无 `gh` CLI、**Docker 守护进程不可达** → 容器构建与验证只在 CI 和 armbian 主机上进行。
 
 ### 11.3 风险登记
 | id | 风险 | 影响 | 缓解 |
@@ -459,7 +472,7 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 | **M5** | 图标抓取链 + 负缓存 + 上传/单色字/重新抓取 + 内容寻址 | 抓取成功/兜底/上传三条路径各有用例 |
 | **M6** | 壁纸（上传/URL/轮换/兜底/每页）、设置页、引擎 CRUD | 设置项全部持久化并跨设备一致 |
 | **M7** | 导出 JSON/zip、导入覆盖、pre-import 备份、备份状态与下载 | 导入后数据与导出前逐字段一致 |
-| **M8** | PWA（manifest/图标/NetworkFirst/更新提示） | iOS Safari 可"添加到主屏幕"，离线可打开 shell |
+| **M8** | PWA（manifest/图标/NetworkFirst/更新提示）——**组件按可选实现**，仅在 HTTPS 下生效 | 升级 HTTPS 后 iOS Safari 可"添加到主屏幕"，离线可打开 shell；http 访问下不报错、不注册 SW |
 | **M9** | Dockerfile + compose + Tailscale 边车 + README + 部署清单 | 宿主 `pull` 后一条命令起，`https://nav.tailbae726.ts.net` 可用 |
 
 ---
@@ -477,7 +490,7 @@ CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 - [ ] 搜索：输入出下拉、回车走引擎、`Ctrl/Cmd+Enter` 开高亮项、徽标切引擎
 - [ ] 壁纸：上传/URL、每页独立或跟随全局、轮换、兜底
 - [ ] 导出 JSON 与 zip；导入覆盖后数据一致；`pre-import.json` 只有一份且可下载
-- [ ] PWA 可安装、更新有提示、离线可打开
+- [ ] PWA：在 HTTPS 访问下可安装、更新有提示、离线可打开；在 http 访问下**优雅降级不报错**
 
 **非功能**
 - [ ] 冷启动首屏 <1.5s（局域网/tailnet 内）
