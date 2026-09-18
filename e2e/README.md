@@ -13,7 +13,8 @@ make e2e          # = ./e2e/run.sh
 
 `node debug-drag.mjs` 是拖拽诊断脚本（逐步打印 DOM 顺序、元素 transform、以及是否发出 PUT）。
 
-用例：`smoke.mjs`（基础交互与排序）、`folders.mjs`（合并/小夹/大夹）、`pages.mjs`（多页与跨页拖拽）、
+用例：`smoke.mjs`（基础交互与排序）、`folders.mjs`（合并/小夹/大夹/大夹空白处开预览模态/夹内改图标）、
+`pages.mjs`（多页与跨页拖拽）、
 `icons.mjs`（图标抓取/候选/纯色/上传/重置/撑满与悬停文字）、`settings.mjs`（设置面板与图块形状）、
 `transfer.mjs`（导入导出）、`pwa.mjs`、`appearance.mjs`（白天/黑夜主题、每页壁纸、蒙版与玻璃、换页平移）。
 每个用例各有独立的数据目录与端口，互不污染，也能单独跑：
@@ -21,6 +22,9 @@ make e2e          # = ./e2e/run.sh
 ```bash
 NAV_BASE=http://127.0.0.1:18100 node e2e/pages.mjs   # 需先自行起一个后端
 ```
+
+⚠️ `folders.mjs` 与 `icons.mjs` 都自带**本地站点夹具**（`createServer` 提供 favicon/manifest），
+私网抓取默认是关的，跑这两个用例必须给后端 `NAV_ALLOW_PRIVATE_FETCH=1`（`run.sh` 里已带）。
 
 `node debug-drag.mjs` / `node debug-slide.mjs` 是诊断脚本（拖拽 / 换页动画）。
 
@@ -102,4 +106,14 @@ NAV_BASE=http://100.70.0.29:8090 node e2e/live-check.mjs
    也能"成功"（服务端白名单里有这两个键），点完当下看起来完全正常，
    只有刷新后才被服务端打回 `global`。因此这类用例必须同时断言
    **服务端数据**（`GET /api/pages/`）与**刷新后的画面**，只看当前 DOM 会漏。
+
+9. **"垫在下面的整块热区"不能用默认点击位置去点，也不能靠点击验证层级。**
+   大夹的空白热区是一个 `inset-0` 的按钮，**中心被九宫格图标盖住**——
+   Playwright 的可操作性检查会判定"元素被 `<a>` 拦截"而一直重试到超时，
+   必须 `click({ position: { x: 4, y: 4 } })` 点内边距；
+   而"图标自己还能点、没被热区抢走"这种层级关系，用
+   `document.elementFromPoint()` 在**图标中心**与**内边距**各探一次最省事
+   （点一次图标就跳走了，headless 下没法断言）。
+   热区提示的显隐也不要读 `box-shadow`/`background-color`：那些是过渡属性，
+   headless 下会卡在起点；读 `--tw-ring-color` 这类**不参与过渡的自定义属性**才稳。
 

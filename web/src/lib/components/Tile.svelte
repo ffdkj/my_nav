@@ -38,7 +38,7 @@
 <div class="size-full transition {highlight}">
   {#if item.kind === 'folder'}
     {#if (item.size ?? 1) === 2}
-      <BigFolder {item} {onedit} {ondelete} />
+      <BigFolder {item} {onedit} {ondelete} onopen={onopen} />
     {:else}
       <FolderTile {item} onopen={onopen ?? onedit} {onedit} {ondelete} />
     {/if}

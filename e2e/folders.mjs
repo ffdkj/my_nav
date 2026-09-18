@@ -6,7 +6,11 @@
  *   4) 模态内"移出到主网格" → 夹内少一个、主网格多一个
  *   5) 编辑夹 → 切 2×2 → 网格上该块横跨 2 列（占 4 格）
  *   6) 大夹内部的图标是真实 <a href>，可直接点击
+ *   7) 大夹空白处（内边距/缝）→ 打开与小夹同一个预览模态（Q36 决策 1）
+ *   8) 预览模态内每个图标有"编辑图标"→ 复用普通图块的编辑对话框（候选卡片）
+ *   9) 在里面手选一张候选 → 真的落到夹内那个图标上，且模态仍开着（复用闭环）
  */
+import { createServer } from 'node:http'
 import { chromium } from 'playwright'
 
 const BASE = process.env.NAV_BASE ?? 'http://127.0.0.1:18090'
@@ -24,6 +28,36 @@ async function board() {
 const folderItems = (b) => b.items.filter((i) => i.kind === 'folder')
 const linkItems = (b) => b.items.filter((i) => i.kind === 'link')
 
+// ---- 离线小站点：给"夹内改图标"提供确定性候选（不依赖外网） ----
+let sitePng = Buffer.alloc(0)
+const site = createServer((req, res) => {
+  if (req.url === '/icon.png' || req.url === '/favicon.ico') {
+    res.writeHead(200, { 'Content-Type': 'image/png' })
+    res.end(sitePng)
+    return
+  }
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+  res.end(
+    `<!doctype html><html><head><link rel="icon" sizes="256x256" href="/icon.png"></head><body>stub</body></html>`,
+  )
+})
+await new Promise((resolve) => site.listen(0, '127.0.0.1', resolve))
+const siteURL = `http://127.0.0.1:${site.address().port}/`
+
+/** 在页面里用 canvas 造一张 PNG（返回 base64），供上面的站点夹具使用 */
+const makePngInPage = ([w, h, from, to]) => {
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  const grad = ctx.createLinearGradient(0, 0, w, h)
+  grad.addColorStop(0, from)
+  grad.addColorStop(1, to)
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, w, h)
+  return canvas.toDataURL('image/png').split(',')[1]
+}
+
 
 /** 等所有排队中的提交落库（UI 的"保存中…"消失）。
  *  加了图标抓取后单次 PUT 可能等上几秒，且提交是串行的，
@@ -38,6 +72,7 @@ async function waitSaved(page, timeout = 20_000) {
 
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+sitePng = Buffer.from(await page.evaluate(makePngInPage, [256, 256, '#22c55e', '#0ea5e9']), 'base64')
 const consoleErrors = []
 page.on('console', (m) => {
   if (m.type() === 'error') consoleErrors.push(m.text())
@@ -146,12 +181,103 @@ try {
   const innerLinks = await page.locator('ul[aria-label="导航图标"] > li').first().locator('a[href]').count()
   check('大夹内部图标是真实链接', innerLinks >= 1, `a[href]=${innerLinks}`)
 
+  // ---- 7) 大夹空白处 = 展开同一个预览模态 ----
+  // 直接用 elementFromPoint 判定"谁在最上面"：图标中心必须是 <a>（点了就跳转），
+  // 内边距必须是展开按钮 —— 这条断言不依赖点击后跳走，headless 下也能验。
+  const bigTile = page.locator('ul[aria-label="导航图标"] > li').first()
+  const hits = await bigTile.evaluate((li) => {
+    const probe = (x, y) => {
+      const el = document.elementFromPoint(x, y)
+      if (!el) return 'none'
+      if (el.closest('a[href]')) return 'link'
+      if (el.closest('[data-testid="bigfolder-open"]')) return 'open'
+      return el.tagName.toLowerCase()
+    }
+    const a = li.querySelector('a[href]').getBoundingClientRect()
+    const btn = li.querySelector('[data-testid="bigfolder-open"]').getBoundingClientRect()
+    return {
+      icon: probe(a.left + a.width / 2, a.top + a.height / 2),
+      corner: probe(btn.left + 4, btn.top + 4),
+    }
+  })
+  check('大夹内图标中心仍命中链接（没被展开层抢走）', hits.icon === 'link', `hit=${hits.icon}`)
+  check('大夹内边距命中展开按钮', hits.corner === 'open', `hit=${hits.corner}`)
+
+  // 悬停空白处要有可见提示（环 + 淡底），否则"这里能点"根本发现不了。
+  // 断言读 --tw-ring-color 而不是 box-shadow：自定义属性不参与 transition，
+  // 不会撞上 headless 下 transition 取值卡在起点的问题。
+  const hint = page.locator('[data-testid="bigfolder-open"] > span')
+  const ringBefore = await hint.evaluate((el) => getComputedStyle(el).getPropertyValue('--tw-ring-color').trim())
+  await page.locator('[data-testid="bigfolder-open"]').hover({ position: { x: 4, y: 4 } })
+  await page.waitForTimeout(250)
+  const ringAfter = await hint.evaluate((el) => getComputedStyle(el).getPropertyValue('--tw-ring-color').trim())
+  check('悬停空白处出现可见提示（展开环变色）', ringBefore !== ringAfter, `${ringBefore} -> ${ringAfter}`)
+  await page.screenshot({ path: 'e2e/shot-m3-05-big-hover.png' })
+
+  // 点左上角内边距（按钮中心被图标盖着，Playwright 会判定被拦截）
+  await page.locator('[data-testid="bigfolder-open"]').click({ position: { x: 4, y: 4 } })
+  const fmodal = page.locator('[data-testid="folder-modal"]')
+  await fmodal.waitFor({ timeout: 5_000 })
+  check('点大夹空白处打开预览模态（复用小夹那个）', await fmodal.isVisible())
+  await page.screenshot({ path: 'e2e/shot-m3-06-big-preview.png' })
+
+  // ---- 8) 模态内改夹内图标的图标：复用普通图块的编辑对话框 ----
+  const childId = folderItems(await board())[0].children[0].link_id
+  // 把夹内这个链接指到离线小站点，候选才是确定的（不赌外网）
+  await fetch(`${BASE}/api/links/${childId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: siteURL, title: 'Stub' }),
+  })
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.locator('[data-testid="bigfolder-open"]').click({ position: { x: 4, y: 4 } })
+  await fmodal.waitFor({ timeout: 5_000 })
+
+  const pencil = fmodal.locator('[data-testid="folder-link-edit"]')
+  check('预览模态内每个图标都有「编辑图标」按钮', (await pencil.count()) === 1, `count=${await pencil.count()}`)
+  await pencil.first().hover()
+  await page.waitForTimeout(200)
+  await page.screenshot({ path: 'e2e/shot-m3-07-folder-link-edit.png' })
+  await pencil.first().click()
+  const dialog = page.locator('form[aria-label="编辑图标"]')
+  await dialog.waitFor({ timeout: 5_000 })
+  await page.locator('#link-url-input').waitFor({ timeout: 5_000 })
+  check(
+    '「编辑图标」打开的是普通链接编辑对话框（地址已带出）',
+    (await page.inputValue('#link-url-input')) === siteURL,
+    await page.inputValue('#link-url-input'),
+  )
+
+  const cards = dialog.locator('[data-testid="icon-card-candidate"]')
+  await cards.first().waitFor({ timeout: 20_000 })
+  check('对话框里列出了候选卡片', (await cards.count()) >= 1, `count=${await cards.count()}`)
+  await cards.first().click()
+  await dialog.getByRole('button', { name: '确定' }).click()
+  await page.waitForTimeout(1200)
+  await waitSaved(page)
+
+  const after = (await board()).links.find((l) => l.id === childId)
+  check(
+    '手选候选真的落到夹内那个图标上（icon_picked_url 已记下）',
+    Boolean(after?.icon_picked_url) && after?.icon_status === 'ok',
+    `picked=${after?.icon_picked_url ? 'yes' : 'no'} status=${after?.icon_status}`,
+  )
+  check('改完图标预览模态仍然开着（复用闭环）', await fmodal.isVisible())
+  await page.screenshot({ path: 'e2e/shot-m3-08-modal-icon-picked.png' })
+
+  // 补一张：首屏（大夹在网格上）的空白处提示，给人工复核留证据
+  await fmodal.locator('button[aria-label="关闭"]').click()
+  await page.locator('[data-testid="bigfolder-open"]').hover({ position: { x: 4, y: 4 } })
+  await page.waitForTimeout(250)
+  await page.screenshot({ path: 'e2e/shot-m3-09-big-on-grid.png' })
+
   check('浏览器控制台无 error', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '))
 } catch (err) {
   check('执行过程未抛异常', false, err.message)
   await page.screenshot({ path: 'e2e/shot-m3-fail.png' }).catch(() => {})
 } finally {
   await browser.close()
+  site.close()
 }
 
 const failed = results.filter((r) => !r.ok)

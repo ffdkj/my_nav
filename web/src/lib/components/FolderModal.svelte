@@ -2,13 +2,15 @@
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
   import MiniIcon from '$lib/components/MiniIcon.svelte'
   import { board, MAX_FOLDER_ITEMS } from '$lib/store/board.svelte'
-  import type { Child, Item } from '$lib/types'
+  import type { Child, Item, Link } from '$lib/types'
 
   interface Props {
     item: Item | null
     onclose: () => void
+    /** 夹内某个图标点"编辑图标"：复用普通图块的编辑对话框（含候选卡片） */
+    oneditlink?: (link: Link) => void
   }
-  let { item, onclose }: Props = $props()
+  let { item, onclose, oneditlink }: Props = $props()
 
   const folder = $derived(item ? board.folderOf(item) : undefined)
   const title = $derived(folder?.name || '文件夹')
@@ -63,6 +65,7 @@
       role="dialog"
       aria-modal="true"
       aria-label={title}
+      data-testid="folder-modal"
     >
       <div class="mb-3 flex items-center justify-between">
         <h2 class="text-sm font-semibold">
@@ -95,14 +98,27 @@
         {#each zoneItems as child (child.id)}
           <li class="group/mini relative">
             {#if board.links[child.link_id]}
+              {@const link = board.links[child.link_id]}
               <span class="block [&>span]:size-auto">
-                <MiniIcon link={board.links[child.link_id]} mode="live" />
+                <MiniIcon {link} mode="live" />
               </span>
+              {#if oneditlink}
+                <button
+                  type="button"
+                  onclick={() => oneditlink(link)}
+                  class="absolute -top-1 -left-1 flex size-4 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[9px] text-fg/80 ring-1 ring-fg/20 opacity-0 transition group-hover/mini:opacity-100 focus-visible:opacity-100 hover:bg-accent-500 hover:text-white pointer-coarse:opacity-100"
+                  aria-label="编辑图标 {link.title || link.url}"
+                  title="编辑图标"
+                  data-testid="folder-link-edit"
+                >
+                  &#9998;
+                </button>
+              {/if}
             {/if}
             <button
               type="button"
               onclick={() => eject(child)}
-              class="absolute -top-1 -right-1 flex size-4 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[9px] text-fg/80 ring-1 ring-fg/20 opacity-0 transition group-hover/mini:opacity-100 hover:bg-red-500 hover:text-white"
+              class="absolute -top-1 -right-1 flex size-4 cursor-pointer items-center justify-center rounded-full bg-surface-700 text-[9px] text-fg/80 ring-1 ring-fg/20 opacity-0 transition group-hover/mini:opacity-100 focus-visible:opacity-100 hover:bg-red-500 hover:text-white pointer-coarse:opacity-100"
               aria-label="移出到主网格"
               title="移出到主网格"
             >

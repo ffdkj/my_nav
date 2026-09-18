@@ -180,6 +180,16 @@
     dialogOpen = true
   }
 
+  /**
+   * 夹内预览模态里点某个图标的"编辑图标"：直接复用普通图块的编辑对话框
+   * （同一个 editing 状态 + 同一份候选卡片逻辑），模态保持打开，
+   * 关掉对话框就能看到新图标已经换上去。
+   */
+  function openEditLink(link: Link) {
+    editing = link
+    dialogOpen = true
+  }
+
   async function submitDialog(url: string, title: string, icon: IconChoice | null) {
     dialogOpen = false
     if (editing) {
@@ -356,7 +366,7 @@
   onclose={() => (dialogOpen = false)}
 />
 
-<FolderModal item={openFolder} onclose={() => (openFolder = null)} />
+<FolderModal item={openFolder} onclose={() => (openFolder = null)} oneditlink={openEditLink} />
 <FolderDialog item={editFolder} onclose={() => (editFolder = null)} />
 <PageManager open={managerOpen} onclose={() => (managerOpen = false)} />
 <SettingsDialog open={settingsOpen} onclose={() => (settingsOpen = false)} />

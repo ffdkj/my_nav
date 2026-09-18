@@ -74,7 +74,8 @@ run_case() {
 }
 
 run_case basic    "$BASE_PORT"         smoke.mjs
-run_case folders  "$((BASE_PORT + 1))" folders.mjs
+# folders 也用到本地站点夹具（验"夹内改图标"的候选卡片），同样要放开私网抓取
+run_case folders  "$((BASE_PORT + 1))" folders.mjs NAV_ALLOW_PRIVATE_FETCH=1
 run_case pages    "$((BASE_PORT + 2))" pages.mjs
 # 图标用例用本地站点做目标，需要放开私网抓取（默认是关的，见 README）
 run_case icons    "$((BASE_PORT + 3))" icons.mjs NAV_ALLOW_PRIVATE_FETCH=1
