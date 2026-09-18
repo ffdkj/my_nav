@@ -70,6 +70,19 @@ try {
     // 图块里可能是真图标，也可能是纯色兜底（例如这个站没抓到图标）——
     // 两种都该"撑满"，所以取哪个存在就量哪个
     const art = document.querySelector('[data-testid="tile-icon"], [data-testid="tile-monogram"]')
+    // 撑满规则有**两个**合法档，逐块量（只量第一块会在"第一块恰好是小位图"时误报）：
+    // 常规图撑满 100%；源图 <64px 的小位图只放大到 60%（硬拉会糊，spec 决策 33）
+    const fills = [...document.querySelectorAll('[data-testid="tile-link"]')]
+      .map((t) => {
+        const a = t.querySelector('[data-testid="tile-icon"], [data-testid="tile-monogram"]')
+        if (!a) return null
+        return {
+          kind: a.getAttribute('data-testid') === 'tile-icon' ? 'icon' : 'word',
+          w: a.getBoundingClientRect().width / t.getBoundingClientRect().width,
+          nat: a.naturalWidth || 0,
+        }
+      })
+      .filter(Boolean)
     const label = document.querySelector('[data-testid="tile-label"]')
     const bar = document.querySelector('input[aria-label="搜索"]')?.closest('div')
     const radius = getComputedStyle(root).getPropertyValue('--radius-tile').trim()
@@ -81,6 +94,7 @@ try {
       wallpaper: document.querySelector('[data-testid="wallpaper"]')?.getAttribute('src') ?? null,
       fill: art && tile ? art.getBoundingClientRect().width / tile.getBoundingClientRect().width : null,
       artKind: art ? art.getAttribute('data-testid') : null,
+      fills,
       labelOpacity: label ? getComputedStyle(label).opacity : null,
       barBg: bar ? getComputedStyle(bar).backgroundColor : null,
       radius,
@@ -114,10 +128,11 @@ try {
   check('动画时长是 300ms', ['.3s', '0.3s', '300ms'].includes(dom.slideMs), dom.slideMs)
 
   if (dom.tiles > 0) {
+    const off = dom.fills.filter((f) => !(f.w > 0.95 || (f.w > 0.55 && f.w < 0.65)))
     check(
-      '图标撑满图块（宽度占比 ≥95%）',
-      dom.fill !== null && dom.fill > 0.95,
-      `fill=${dom.fill} art=${dom.artKind}`,
+      '图标撑满图块（满格，或设计里的 60% 小位图档；没有中间态）',
+      dom.fills.length > 0 && off.length === 0,
+      `fills=${dom.fills.map((f) => f.w.toFixed(2)).join(',')} 越界=${off.length}`,
     )
     check('标题默认不显示（悬停才浮出）', dom.labelOpacity === '0', `opacity=${dom.labelOpacity}`)
     await page.locator('[data-testid="tile-link"]').first().hover()
@@ -129,6 +144,47 @@ try {
     await page.mouse.move(0, 0)
   } else {
     check('当前页没有图块，跳过撑满/悬停检查', true)
+  }
+
+  // 大夹：空白处开预览模态 + 夹内每个图标都有 ✎（0.2.1 的新行为）
+  // 只读：不点 ✎（那会去查候选、往图标库里写字节），点完模态也马上关掉。
+  const bigOpen = page.locator('[data-testid="bigfolder-open"]')
+  if ((await bigOpen.count()) > 0) {
+    // ⚠️ 层级必须在**开模态之前**探：模态是 fixed inset-0，
+    // 开了之后 elementFromPoint 只会打到那层遮罩。
+    const layering = await page.evaluate(() => {
+      const li = document.querySelector('[data-testid="bigfolder-open"]')?.closest('li')
+      const a = li?.querySelector('a[href]')
+      if (!a) return 'no-icon'
+      const r = a.getBoundingClientRect()
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+      return hit?.closest('a[href]') ? 'link' : 'covered'
+    })
+    check('大夹里的图标本身仍可直接点（没被热区盖住）', layering === 'link', `hit=${layering}`)
+
+    // 按钮中心被九宫格盖着，Playwright 会判定被拦截 —— 点左上角内边距
+    await bigOpen.first().click({ position: { x: 4, y: 4 } })
+    const modal = page.locator('[data-testid="folder-modal"]')
+    const opened = await modal
+      .waitFor({ timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false)
+    check('点大夹空白处打开与小夹同一个预览模态', opened)
+
+    if (opened) {
+      const pencils = await modal.locator('[data-testid="folder-link-edit"]').count()
+      const kids = await modal.locator('li a[href]').count()
+      check(
+        '预览模态内每个夹内图标都有 ✎（改图标入口）',
+        kids > 0 && pencils === kids,
+        `✎=${pencils} 夹内图标=${kids}`,
+      )
+      await page.screenshot({ path: 'e2e/shot-live-folder-modal.png' }).catch(() => {})
+      await modal.locator('button[aria-label="关闭"]').click()
+      await page.waitForTimeout(300)
+    }
+  } else {
+    check('线上当前页没有 2×2 大夹，跳过预览模态检查', true)
   }
 
   // 换页方向：两个方向必须相反（这是 0.2.0 修掉的那个 bug 的线上回归）
