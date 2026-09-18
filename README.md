@@ -5,7 +5,7 @@
 
 - **规格书**：[`docs/spec.md`](docs/spec.md)（数据模型 / API 契约 / 交互状态机 / 里程碑 / 验收清单）
 
-近期能力（0.2.0）：
+近期能力（0.2.1）：
 
 - **白天/黑夜**真正生效：语义色板 + 照片上按主题切玻璃/蒙版（浅色**不压白蒙版**，改由白色玻璃保证可读）
 - **每页壁纸**（跟随全局 / 本页单独指定）写在 `pages` 行上，刷新不回退
@@ -57,7 +57,7 @@ make build      # 前端产物 → internal/web/dist → go:embed → bin/nav
 备份恢复、故障排查）。最短路径：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.0/deploy/install.sh -o /tmp/my_nav-install.sh
+curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.1/deploy/install.sh -o /tmp/my_nav-install.sh
 sudo bash /tmp/my_nav-install.sh
 ```
 
@@ -80,7 +80,7 @@ sudo bash /tmp/my_nav-install.sh
 
 | 标签 | 含义 |
 |---|---|
-| `0.2.0` / `0.2` | 固定版本（compose 默认用这个） |
+| `0.2.1` | 固定版本（compose 默认用这个） |
 | `latest` | 最新发布版 |
 | `edge` | main 分支最新构建 |
 
