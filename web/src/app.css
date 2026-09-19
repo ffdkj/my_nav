@@ -123,11 +123,26 @@ body {
   -webkit-user-drag: none;
 }
 
+/*
+  触屏手势分工（实测踩过，见 e2e/touch.mjs）：
+  `manipulation` = pan-x + pan-y + pinch-zoom，等于告诉浏览器"横向也归你管"。
+  于是横滑刚过 20 来像素浏览器就接管去平移，**发 pointercancel 而不发 pointerup**
+  （实测：pointerdown@52 → pointermove@30 → pointercancel@0,0 → 再也没有 pointerup），
+  翻页判定拿到的位移只有 22px，自然判不出来 —— 这就是"安卓滑不动"。
+  改成 pan-y：横向明确留给 JS（翻页），纵向照旧原生滚动（仍然是合成器快路径，
+  不会因为要 preventDefault 而变卡）。图块上继续禁掉双击缩放（这回是 pan-y 的副作用）。
+  <main> 额外保留 pinch-zoom，这样两指缩放（无障碍）还在，
+  只是空白处的双击缩放会回来 —— 空白处本来点了也没反应，无所谓。
+*/
+main {
+  touch-action: pan-y pinch-zoom;
+}
+
 [data-tile] {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
-  touch-action: manipulation;
+  touch-action: pan-y;
 }
 
 /*

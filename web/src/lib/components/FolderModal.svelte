@@ -2,6 +2,7 @@
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
   import MiniIcon from '$lib/components/MiniIcon.svelte'
   import { board, MAX_FOLDER_ITEMS } from '$lib/store/board.svelte'
+  import { blockSyntheticClicks } from '$lib/tap'
   import type { Child, Item, Link } from '$lib/types'
 
   interface Props {
@@ -92,6 +93,7 @@
         }}
         onconsider={consider}
         onfinalize={finalize}
+        use:blockSyntheticClicks
         class="m-0 grid list-none grid-cols-3 gap-2 p-0 text-xs"
         aria-label="夹内图标"
       >

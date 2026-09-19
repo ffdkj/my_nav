@@ -83,6 +83,8 @@ run_case settings "$((BASE_PORT + 4))" settings.mjs
 run_case transfer "$((BASE_PORT + 5))" transfer.mjs
 run_case pwa      "$((BASE_PORT + 6))" pwa.mjs --addr 0.0.0.0
 run_case appearance "$((BASE_PORT + 7))" appearance.mjs
+# 触屏用例用真触摸事件（CDP Input.dispatchTouchEvent）驱动，鼠标测不出它覆盖的两类 bug
+run_case touch    "$((BASE_PORT + 8))" touch.mjs
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "全部用例通过"; else echo "有用例失败"; fi

@@ -4,6 +4,7 @@
   import Tile from '$lib/components/Tile.svelte'
   import type { MenuTarget } from '$lib/components/ContextMenu.svelte'
   import { pack, rowCount } from '$lib/layout'
+  import { blockSyntheticClicks } from '$lib/tap'
   import { board, GRID_COLS } from '$lib/store/board.svelte'
   import type { Item } from '$lib/types'
 
@@ -283,6 +284,7 @@
     }}
     onconsider={consider}
     onfinalize={finalize}
+    use:blockSyntheticClicks
     class="relative m-0 grid list-none justify-start p-0"
     style="grid-template-columns: repeat({displayCols}, var(--tile)); gap: {gapPx}px; min-height: {gridHeight}px;"
     aria-label="导航图标"

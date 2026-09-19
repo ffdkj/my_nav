@@ -16,7 +16,8 @@ make e2e          # = ./e2e/run.sh
 用例：`smoke.mjs`（基础交互与排序）、`folders.mjs`（合并/小夹/大夹/大夹空白处开预览模态/夹内改图标）、
 `pages.mjs`（多页与跨页拖拽）、
 `icons.mjs`（图标抓取/候选/纯色/上传/重置/撑满与悬停文字）、`settings.mjs`（设置面板与图块形状）、
-`transfer.mjs`（导入导出）、`pwa.mjs`、`appearance.mjs`（白天/黑夜主题、每页壁纸、蒙版与玻璃、换页平移）。
+`transfer.mjs`（导入导出）、`pwa.mjs`、`appearance.mjs`（白天/黑夜主题、每页壁纸、蒙版与玻璃、换页平移）、
+`touch.mjs`（**触屏专属**：触屏点击只算一次、横滑角度判定与起手位置）。
 每个用例各有独立的数据目录与端口，互不污染，也能单独跑：
 
 ```bash
@@ -25,6 +26,8 @@ NAV_BASE=http://127.0.0.1:18100 node e2e/pages.mjs   # 需先自行起一个后�
 
 ⚠️ `folders.mjs` 与 `icons.mjs` 都自带**本地站点夹具**（`createServer` 提供 favicon/manifest），
 私网抓取默认是关的，跑这两个用例必须给后端 `NAV_ALLOW_PRIVATE_FETCH=1`（`run.sh` 里已带）。
+`touch.mjs` 用 CDP 的 `Input.dispatchTouchEvent` 发**真触摸事件**：用 mouse 驱动会绕过
+`delayTouchStart` 那条分支，等于没测（见下面第 10 条坑）。
 
 `node debug-drag.mjs` / `node debug-slide.mjs` 是诊断脚本（拖拽 / 换页动画）。
 
@@ -119,4 +122,20 @@ NAV_BASE=http://100.70.0.29:8090 node e2e/live-check.mjs
    （点一次图标就跳走了，headless 下没法断言）。
    热区提示的显隐也不要读 `box-shadow`/`background-color`：那些是过渡属性，
    headless 下会卡在起点；读 `--tw-ring-color` 这类**不参与过渡的自定义属性**才稳。
+
+10. **触屏的东西必须用真触摸事件测，而且别信"鼠标版通过了"。**
+    `touch.mjs` 里两处都是鼠标测不出来的：
+    - `svelte-dnd-action` 只在 `touchend` 上补发 click，`mouseup` 不补 ——
+      用 `page.mouse` 驱动永远看不到"一次 tap 两次导航"。
+      用 CDP `Input.dispatchTouchEvent`（`hasTouch: true` 的 context）才有真触摸。
+      判"重复点击"要看 `isTrusted`：补发的那发是 `trusted=false`，
+      而且它**先于**原生那发到达（实测顺序 `touchend → click(false) → click(true)`），
+      所以"按时间窗吃掉第二发"会把真正有效的那发吃掉 —— 这类断言要连**开几个标签页**一起数。
+    - 横滑的成败还取决于 CSS `touch-action`：`manipulation` 允许 pan-x，
+      浏览器横滑过 20 来像素就接管平移，**发 `pointercancel` 而不发 `pointerup`**。
+      诊断时把 `pointerdown/pointermove/pointerup/pointercancel/touchmove/touchend`
+      全捕获取打一份日志，一眼就能看出断在哪一步（本仓库诊断脚本：`.smoke/debug-swipe-touch.mjs`）。
+    另外：**索引页面的产物是编进 Go 二进制的**，改完 `web/` 只跑 `npm run build`
+    而后端还是旧 `bin/nav` 时，浏览器拿到的仍是旧 CSS/JS ——
+    改动像是"没生效"。必须 `go build` 重编（`run.sh` 会一起做）。
 

@@ -137,21 +137,51 @@
     }
   }
 
-  // 手势横滑：只在非图块区域起手，横向位移 >60 且纵向 <40 才算翻页
-  let swipeStart: { x: number; y: number } | null = null
+  // ---------- 手势横滑翻页 ----------
+  //
+  // 两条踩过的坑：
+  //  1) **起手不能遇到 [data-tile] 就放弃**。手机上网格几乎铺满屏幕，
+  //     原先那句 `closest('[data-tile]') → return` 等于"哪儿都滑不动"，
+  //     这就是安卓端完全没反应的原因。现在全屏可起手，与拖拽的冲突另判。
+  //  2) **判定不能用纵向位移的绝对阈值**（旧的 `|dy| < 40`）。滑动越长越严苛：
+  //     200px 的横滑只允许 11° 偏角，稍微斜一点就被判成上下滑。
+  //     改成**角度**：与水平夹角 ≤30° 即算横滑，即 |dy| ≤ |dx|·tan30°；
+  //     再配一个最小位移当地板，免得轻点时的抖动误翻页。
+  const SWIPE_MIN_DX = 50
+  const SWIPE_MAX_SLOPE = Math.tan((30 * Math.PI) / 180) // 30° ≈ 0.577
+  /** dnd 起拖后会把原元素挂上这个 id —— 长按变拖拽时别再抢着翻页 */
+  const isDragging = () => Boolean(document.getElementById('dnd-action-dragged-el'))
+
+  let swipe: { x: number; y: number; lx: number; ly: number } | null = null
+
   function onpointerdown(e: PointerEvent) {
-    if ((e.target as HTMLElement | null)?.closest('[data-tile]')) return
-    swipeStart = { x: e.clientX, y: e.clientY }
+    // 只认主指针：多指（捏合缩放）不该被当成横滑
+    swipe = e.isPrimary ? { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY } : null
   }
-  function onpointerup(e: PointerEvent) {
-    if (!swipeStart || board.carry) {
-      swipeStart = null
-      return
+
+  function onpointermove(e: PointerEvent) {
+    if (swipe && e.isPrimary) {
+      swipe.lx = e.clientX
+      swipe.ly = e.clientY
     }
-    const dx = e.clientX - swipeStart.x
-    const dy = e.clientY - swipeStart.y
-    swipeStart = null
-    if (Math.abs(dx) > 60 && Math.abs(dy) < 40) flip(dx < 0 ? 1 : -1)
+  }
+
+  /**
+   * 收手时判定。`pointerup` 与 `pointercancel` 都走这里 ——
+   * 浏览器一旦决定接管手势（开始滚动/缩放）就**不会再发 pointerup**，
+   * 而那正是"横滑被当成上下滑"的那条路径；好在最后位置已经够判断方向了。
+   * 真正的上下滚动会卡在角度判定上，不会误翻页。
+   */
+  function endSwipe() {
+    const s = swipe
+    swipe = null
+    if (!s || board.carry || board.pages.length < 2) return
+    if (isDragging()) return
+    const dx = s.lx - s.x
+    const dy = s.ly - s.y
+    if (Math.abs(dx) < SWIPE_MIN_DX) return
+    if (Math.abs(dy) > Math.abs(dx) * SWIPE_MAX_SLOPE) return
+    flip(dx < 0 ? 1 : -1)
   }
 
   // 拖拽到屏幕左右边缘 → 翻页并进入跨页 carry
@@ -253,7 +283,9 @@
   class="relative min-h-dvh"
   onwheel={onwheel}
   onpointerdown={onpointerdown}
-  onpointerup={onpointerup}
+  onpointermove={onpointermove}
+  onpointerup={endSwipe}
+  onpointercancel={endSwipe}
 >
   <WallpaperLayer />
 

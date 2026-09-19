@@ -5,7 +5,7 @@
 
 - **规格书**：[`docs/spec.md`](docs/spec.md)（数据模型 / API 契约 / 交互状态机 / 里程碑 / 验收清单）
 
-近期能力（0.2.1）：
+近期能力（0.2.2）：
 
 - **白天/黑夜**真正生效：语义色板 + 照片上按主题切玻璃/蒙版（浅色**不压白蒙版**，改由白色玻璃保证可读）
 - **每页壁纸**（跟随全局 / 本页单独指定）写在 `pages` 行上，刷新不回退
@@ -13,6 +13,7 @@
 - **图标候选**：输入网址即列出多张候选（站点 `<link>`/manifest/`favicon.ico` + favicon 服务），标出尺寸与透明底，选一张即用；纯色文字与本地图标仍是兜底
 - **图块形态**：图标撑满整块、标题悬停浮出；形状预设（圆角 / 圆形 / 超椭圆 / 直角）在设置里切换
 - **大夹空白处 = 预览模态**：2×2 夹内图标照旧直接跳转，点空白处打开与小夹同一个预览面板；面板里每个图标都能 ✎ 改图标（复用普通图块的编辑对话框，含候选卡片），改完面板不关
+- **触屏修正**：iPad 上点一次图标不再弹出两个相同页面（`svelte-dnd-action` 会在 `touchend` 补发一次 click，而它"原生 click 已被拦掉"的假定在配了 `delayTouchStart` 时不成立）；手机横滑翻页恢复可用（起手不再排除图块、判定改为「与水平夹角 ≤30°」、`touch-action` 收成 `pan-y` 把横向留给 JS）
 - **技术调研**：[`docs/research/`](docs/research/)（四条链路的实测结论与版本来源）
 
 ## 技术栈
@@ -57,7 +58,7 @@ make build      # 前端产物 → internal/web/dist → go:embed → bin/nav
 备份恢复、故障排查）。最短路径：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.1/deploy/install.sh -o /tmp/my_nav-install.sh
+curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.2/deploy/install.sh -o /tmp/my_nav-install.sh
 sudo bash /tmp/my_nav-install.sh
 ```
 
@@ -80,7 +81,7 @@ sudo bash /tmp/my_nav-install.sh
 
 | 标签 | 含义 |
 |---|---|
-| `0.2.1` | 固定版本（compose 默认用这个） |
+| `0.2.2` | 固定版本（compose 默认用这个） |
 | `latest` | 最新发布版 |
 | `edge` | main 分支最新构建 |
 
