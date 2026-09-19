@@ -24,6 +24,7 @@ import { createServer } from 'node:http'
 import { chromium } from 'playwright'
 
 const BASE = process.env.NAV_BASE ?? 'http://127.0.0.1:18098'
+const BOARD_URL = `${BASE}/api/pages/page-home/board`
 
 const results = []
 function check(name, ok, detail = '') {
@@ -59,8 +60,9 @@ page.on('console', (m) => {
 })
 page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + e.message.split('\n')[0]))
 
-/** 发一串真触摸事件（touchStart → N×touchMove → touchEnd） */
-async function touchSwipe(from, to, { steps = 10, holdMs = 0 } = {}) {
+/** 发一串真触摸事件（touchStart → N×touchMove → touchEnd）
+ *  `onMid` 在最后一个 touchMove 之后、touchEnd 之前回调，用来观察"拖拽中"的状态 */
+async function touchSwipe(from, to, { steps = 10, holdMs = 0, onMid } = {}) {
   await cdp.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
     touchPoints: [{ x: from.x, y: from.y }],
@@ -77,6 +79,7 @@ async function touchSwipe(from, to, { steps = 10, holdMs = 0 } = {}) {
       ],
     })
   }
+  if (onMid) await onMid()
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 }
 
@@ -185,16 +188,37 @@ try {
   // 太短：轻点抖动不该翻
   check('位移不足的轻滑不翻页', !(await swipeFromTile(-30, 0)))
 
-  // ---- 6) 长按 300ms 变拖拽时，不能被当成翻页 ----
+  // ---- 6) 长按 300ms 变拖拽 ----
+  // 这条不只是"别翻页"：touch-action 一改就可能把触屏拖拽悄悄弄坏，
+  // 所以顺带验"真的进过拖拽态"和"松手后顺序真的变了"。
   await page.locator('nav[aria-label="页面"] button').first().click()
   await page.waitForTimeout(700)
+  const orderBefore = (await (await fetch(BOARD_URL)).json()).items.map((i) => i.id)
+
   const lastBox = await page.locator('[data-testid="tile-link"]').last().boundingBox()
   const dragFrom = { x: lastBox.x + lastBox.width / 2, y: lastBox.y + lastBox.height / 2 }
   // 目标点夹在安全区内：太靠左会触发"拖到边缘翻页"（那是另一条路径）
   const dragTo = { x: Math.max(90, dragFrom.x - 150), y: dragFrom.y }
-  await touchSwipe(dragFrom, dragTo, { steps: 8, holdMs: 450 })
-  await page.waitForTimeout(800)
+  let sawDraggedEl = false
+  await touchSwipe(dragFrom, dragTo, {
+    steps: 10,
+    holdMs: 450,
+    onMid: async () => {
+      sawDraggedEl = await page.evaluate(() =>
+        Boolean(document.getElementById('dnd-action-dragged-el')),
+      )
+    },
+  })
+  await page.waitForTimeout(900)
+  check('长按后真的进入了拖拽态', sawDraggedEl)
   check('长按变拖拽时不会被当成翻页', !(await hash()).includes('work'), `hash=${await hash()}`)
+  await waitSaved(page)
+  const orderAfter = (await (await fetch(BOARD_URL)).json()).items.map((i) => i.id)
+  check(
+    '触屏拖拽真的改了顺序（touch-action 改动没弄坏拖拽）',
+    orderAfter.join() !== orderBefore.join(),
+    `${orderBefore.join()} -> ${orderAfter.join()}`,
+  )
 
   check('浏览器控制台无 error', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '))
   await page.screenshot({ path: 'e2e/shot-touch.png' })
