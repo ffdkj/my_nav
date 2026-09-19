@@ -229,6 +229,58 @@ try {
   }
 
   check('浏览器控制台无 error', errors.length === 0, errors.slice(0, 2).join(' | '))
+
+  // ---- 触屏：`touch-action` 与"横滑能翻页"必须真的在线上生效 ----
+  // 0.2.2 修的两条 bug（iPad 双开、手机滑不动）整套鼠标驱动的用例都看不见，
+  // 所以体检里补一段**真触摸事件**的冒烟：只读（翻页只改浏览器 hash，不写数据）。
+  const tctx = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  })
+  const tpage = await tctx.newPage()
+  const cdp = await tctx.newCDPSession(tpage)
+  await tpage.goto(BASE, { waitUntil: 'networkidle' })
+  await tpage.waitForSelector('[data-testid="page-stage"]')
+  await tpage.waitForTimeout(600)
+
+  const ta = await tpage.evaluate(() => ({
+    tile: getComputedStyle(document.querySelector('[data-tile]')).touchAction,
+    main: getComputedStyle(document.querySelector('main')).touchAction,
+  }))
+  check(
+    '触屏手势分工就位（图块 pan-y；横向留给 JS 翻页）',
+    ta.tile === 'pan-y' && ta.main.startsWith('pan-y'),
+    JSON.stringify(ta),
+  )
+
+  if ((await pages()).length >= 2) {
+    const tileBox = await tpage.locator('[data-testid="tile-link"]').first().boundingBox()
+    const from = { x: tileBox.x + tileBox.width / 2, y: tileBox.y + tileBox.height / 2 }
+    const hashBefore = await tpage.evaluate(() => location.hash)
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: from.x, y: from.y }],
+    })
+    for (let i = 1; i <= 10; i += 1) {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: Math.round(from.x - (200 * i) / 10), y: Math.round(from.y + (60 * i) / 10) }],
+      })
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await tpage.waitForTimeout(900)
+    const hashAfter = await tpage.evaluate(() => location.hash)
+    // 斜 16.7°（60/200）——旧的"纵向 <40px"绝对阈值会把它判成上下滑
+    check(
+      '从图块上起手、斜 16.7° 的真触摸横滑能翻页',
+      hashAfter !== hashBefore,
+      `${hashBefore} -> ${hashAfter}`,
+    )
+  } else {
+    check('只有一个页面，跳过触屏横滑检查', true)
+  }
+  await tctx.close()
 } catch (err) {
   check('检查过程未抛异常', false, err.message)
 } finally {
