@@ -277,9 +277,76 @@ try {
       hashAfter !== hashBefore,
       `${hashBefore} -> ${hashAfter}`,
     )
+
+    // 首尾相连（决策 40）：跳到**最后一页**再向前滑一格，应该绕回**第一页**。
+    // 不能写成"再滑一次回到出发页"——那只在两页时成立，线上现在有 4 页。
+    // 起手点放在网格下方空白处：这一条只验"环"，"能在图块上起手"由上面那条负责。
+    const slugs = (await pages()).map((p) => p.slug)
+    try {
+      const dots = tpage.locator('nav[aria-label="页面"] button')
+      await dots.nth(slugs.length - 1).click()
+      await tpage.waitForTimeout(900)
+      const lastHash = await tpage.evaluate(() => location.hash)
+      const y = Math.round((await tpage.evaluate(() => window.innerHeight)) * 0.75)
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 320, y }] })
+      for (let i = 1; i <= 10; i += 1) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: Math.round(320 - 20 * i), y }],
+        })
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await tpage.waitForTimeout(900)
+      const wrapHash = await tpage.evaluate(() => location.hash)
+      check(
+        '末页继续向前滑 → 首尾相连回到第一页',
+        wrapHash.includes(slugs[0]) && !lastHash.includes(slugs[0]),
+        `${lastHash} -> ${wrapHash}（首页 ${slugs[0]}，共 ${slugs.length} 页）`,
+      )
+      // 体检不该改变用户看到的页面：还原到第一页
+      await dots.first().click()
+      await tpage.waitForTimeout(700)
+    } catch (err) {
+      check('末页继续向前滑 → 首尾相连回到第一页', false, err.message)
+    }
   } else {
     check('只有一个页面，跳过触屏横滑检查', true)
   }
+
+  // 决策 40/41 的部署校验：只能证明"线上跑的确实是新包"
+  const bundle = await tpage.evaluate(async () => {
+    const src = document.querySelector('script[type="module"][src]')?.getAttribute('src') ?? ''
+    const res = src ? await fetch(src) : null
+    return { src, text: res ? await res.text() : '' }
+  })
+  check(
+    '线上包里含新功能标记（搜索结果序号徽标）',
+    bundle.text.includes('search-result-index'),
+    bundle.src,
+  )
+  check(
+    '到边提示已随首尾相连删除（死代码不在线上包里）',
+    !bundle.text.includes('已经是最后一页') && !bundle.text.includes('已经是第一页'),
+    bundle.src,
+  )
+
+  // 序号徽标要用**真实数据**验：查询词取自库里第一条链接的标题，保证一定有匹配
+  const sample = await tpage.evaluate(async () => {
+    const res = await fetch('/api/links')
+    const json = await res.json()
+    return ((json.links?.[0]?.title ?? '').slice(0, 3) || 'a').trim() || 'a'
+  })
+  const searchBox = tpage.getByRole('textbox', { name: '搜索' })
+  await searchBox.fill(sample)
+  await tpage.waitForTimeout(500)
+  const firstBadge = await tpage
+    .locator('[data-testid="search-result-index"]')
+    .first()
+    .textContent()
+    .catch(() => null)
+  check('搜索下拉结果带 1…N 序号徽标（真实数据）', firstBadge === '1', `查询=${sample} 徽标=${firstBadge}`)
+  await searchBox.fill('')
+
   await tctx.close()
 } catch (err) {
   check('检查过程未抛异常', false, err.message)
