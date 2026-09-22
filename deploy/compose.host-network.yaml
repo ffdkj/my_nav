@@ -14,7 +14,7 @@
 
 services:
   app:
-    image: ghcr.io/ffdkj/my_nav:0.2.2
+    image: ghcr.io/ffdkj/my_nav:0.2.3
     container_name: my_nav
     restart: unless-stopped
     # 与宿主共用网络栈（本变体的全部意义所在）

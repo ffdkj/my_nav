@@ -91,7 +91,7 @@ try {
 
   // ---- 4) 横滑翻页 ----
   // 约定：向左滑 = 下一页，向右滑 = 上一页。此刻停在最后一页(Work)，
-  // 所以必须向右滑才回得去（向左滑会被边界挡住，这正是期望行为）。
+  // 所以向右滑回第一页。
   await page.mouse.move(400, 500)
   await page.mouse.down()
   await page.mouse.move(900, 510, { steps: 12 })
@@ -99,6 +99,36 @@ try {
   await page.waitForTimeout(800)
   const afterSwipe = await page.evaluate(() => location.hash)
   check('手势横滑翻页生效', afterSwipe.includes('home'), `hash=${afterSwipe}`)
+
+  // ---- 4b) 首尾相连（R3）：两端不再撞墙，继续滑就绕回去 ----
+  // 此刻在第一页(Home)。向右滑 = 上一页 = 绕到最后一页(Work)。
+  await page.mouse.move(900, 500)
+  await page.mouse.down()
+  await page.mouse.move(400, 510, { steps: 12 })
+  await page.mouse.up()
+  await page.waitForTimeout(800)
+  const wrapBack = await page.evaluate(() => location.hash)
+  check('首页向右滑 → 绕到最后一页', wrapBack.includes('work'), `hash=${wrapBack}`)
+
+  // 此刻在最后一页(Work)。向左滑 = 下一页 = 绕回第一页。
+  await page.mouse.move(400, 500)
+  await page.mouse.down()
+  await page.mouse.move(900, 510, { steps: 12 })
+  await page.mouse.up()
+  await page.waitForTimeout(800)
+  const wrapFwd = await page.evaluate(() => location.hash)
+  check('末页向左滑 → 绕回首页', wrapFwd.includes('home'), `hash=${wrapFwd}`)
+
+  // 滚轮走的是同一条路径（flip→adjacentPage），一起钉住：第一页往回滚 = 绕到最后一页。
+  await page.mouse.move(640, 400)
+  await page.mouse.wheel(0, -300)
+  await page.waitForTimeout(800)
+  const wrapWheel = await page.evaluate(() => location.hash)
+  check('第一页往回滚 → 绕到最后一页', wrapWheel.includes('work'), `hash=${wrapWheel}`)
+
+  // 回到第一页：下面的用例都从 Home 起手
+  await page.mouse.wheel(0, 300)
+  await page.waitForTimeout(800)
 
   // ---- 5) 长按 → 移动到… ----
   const tile = await page.locator('[data-tile]').first().boundingBox()
@@ -159,6 +189,30 @@ try {
     `home ${before.items.length}->${homeFinal.items.length}, work ${workFinal.items.length}`,
   )
   await page.screenshot({ path: 'e2e/shot-m4-04-after-carry.png' })
+
+  // ---- 7) 首尾相连：拖到边缘也不再撞墙 ----
+  // 此刻停在最后一页(Work)。往**左**边缘拖 = 上一页 = 绕回第一页(Home)。
+  // 只验"绕过去了"：绕过去之后按 Esc 取消 carry，一点数据都不动
+  // （Esc 绑在 App 与 CarryLayer 上，见 cancelCarry）。
+  const edgeTile = await page.locator('[data-tile]').first().boundingBox()
+  await page.mouse.move(edgeTile.x + edgeTile.width / 2, edgeTile.y + edgeTile.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(edgeTile.x + edgeTile.width / 2 - 20, edgeTile.y + edgeTile.height / 2 + 4, {
+    steps: 5,
+  })
+  await page.mouse.move(8, edgeTile.y + edgeTile.height / 2, { steps: 15 })
+  await page.waitForTimeout(600)
+  const hashAtLeftEdge = await page.evaluate(() => location.hash)
+  check('末页拖到左边缘 → 绕回第一页', hashAtLeftEdge.includes('home'), `hash=${hashAtLeftEdge}`)
+  await page.keyboard.press('Escape')
+  await page.mouse.up()
+  await page.waitForTimeout(400)
+  const afterCancel = await boardOf(home.id)
+  check(
+    '绕页途中取消 carry：数据没被改动',
+    afterCancel.items.length === homeFinal.items.length,
+    `home ${homeFinal.items.length} -> ${afterCancel.items.length}`,
+  )
 
   check('浏览器控制台无 error', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '))
 } catch (err) {

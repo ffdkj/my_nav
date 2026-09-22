@@ -134,7 +134,16 @@ class BoardStore {
     return this.pages.find((p) => p.slug === key || p.id === key)
   }
 
-  async selectPage(id: string) {
+  /**
+   * 切到某页。
+   *
+   * `dirOverride` 只给**手势驱动**的翻页用（横滑 / 滚轮 / 拖到屏幕边缘）。
+   * 平时方向按页码差算；但首尾相连之后，"末页 → 首页"的页码差是负的，
+   * 按页码差算会让新页面从反方向飞进来（看起来像倒着跳了一下），
+   * 而手势方向是明确的：你从末页继续往同一侧滑，新页就该从那一侧进。
+   * 点页码圆点、页面管理跳页没有手势，仍然走页码差。
+   */
+  async selectPage(id: string, dirOverride?: -1 | 1) {
     // 先把排队中的写操作落库，避免切页后它们被算到新页面上
     await this.settled()
 
@@ -153,9 +162,10 @@ class BoardStore {
       if (location.hash !== target) history.replaceState(null, '', target)
 
       if (animate && from) {
-        // 方向按页码差算，跳页（圆点/页面管理）也能得到合理方向
+        // 方向按页码差算，跳页（圆点/页面管理）也能得到合理方向；
+        // 手势翻页则用调用方给的方向（见 selectPage 的注释）。
         const after = this.pageIndex
-        const dir: -1 | 1 = after < fromIndex ? -1 : 1
+        const dir: -1 | 1 = dirOverride ?? (after < fromIndex ? -1 : 1)
         this.#playTransition(dir, ghost, fromWallpaper)
       }
     } catch (err) {
@@ -547,11 +557,20 @@ class BoardStore {
     }
   }
 
+  /**
+   * 相邻页。**首尾相连**：越界就绕回去（末页再往后 = 首页，首页再往前 = 末页）。
+   *
+   * 只有一页时返回 undefined —— "没有邻页"与"绕回自己"是两回事：
+   * 横滑/滚轮/拖到边缘都靠 undefined 判断"这一下该不该动"，
+   * 若让它返回自己，单击一下就会重拉一次当前页（还会白跑一次换页动画的准备工作）。
+   */
   adjacentPage(dir: -1 | 1): Page | undefined {
     if (!this.page) return undefined
+    const n = this.pages.length
+    if (n < 2) return undefined
     const i = this.pages.findIndex((p) => p.id === this.page?.id)
     if (i < 0) return undefined
-    return this.pages[i + dir]
+    return this.pages[(i + dir + n) % n]
   }
 
   get pageIndex(): number {
@@ -574,7 +593,7 @@ class BoardStore {
   /** 网格几何（由 Grid 测量后写入）：漂浮层据此把指针位置换算成落点下标 */
   gridMetrics = $state({ left: 0, top: 0, tile: 96, gap: 16, cols: GRID_COLS })
 
-  beginCarry(itemId: string, toPageId: string): boolean {
+  beginCarry(itemId: string, toPageId: string, dir?: -1 | 1): boolean {
     const item = this.itemById(itemId)
     if (!item || !this.page) return false
     this.carry = {
@@ -584,7 +603,8 @@ class BoardStore {
     }
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
     window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }))
-    void this.selectPage(toPageId)
+    // 拖到边缘也是手势，方向由拖的方向决定（首尾相连时页码差会反着来）
+    void this.selectPage(toPageId, dir)
     return true
   }
 

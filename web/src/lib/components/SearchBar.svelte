@@ -14,6 +14,9 @@
   let pickerOpen = $state(false)
   let focused = $state(false)
 
+  // 站内结果上限：与 Ctrl/Cmd+1…9 的九个槽位一一对应
+  const MAX_RESULTS = 9
+
   // 全局搜索：一次性拉全量链接（个人规模，几百条以内），之后靠 setCollection 增量更新
   const fuse = new Fuse<LinkWithPage>([], {
     keys: [
@@ -42,12 +45,16 @@
   const results = $derived.by(() => {
     if (!query.trim()) return []
     if (!loaded) return []
-    return fuse.search(query.trim(), { limit: 8 })
+    return fuse.search(query.trim(), { limit: MAX_RESULTS })
   })
 
   const engine = $derived(board.defaultEngine)
 
+  // 查询变了就把高亮拉回第一条。⚠️ 必须显式读一下 query：$effect 只追踪"读过的"依赖，
+  // 原先那句 `$effect(() => { highlighted = 0 })` 什么都没读，实际只在挂载时跑过一次 ——
+  // 于是"上次高亮停在第 5 条，新查询只剩 3 条"时 Ctrl/Cmd+Enter 会静默失灵。
   $effect(() => {
+    void query
     highlighted = 0
   })
 
@@ -75,6 +82,25 @@
 
   // Q16 决策：回车永远走搜索引擎；Ctrl/Cmd+Enter 打开高亮的站内结果
   function onkeydown(e: KeyboardEvent) {
+    // Ctrl/Cmd + 1…9：直接打开第 N 条站内匹配。
+    //
+    // 为什么必须 preventDefault：桌面浏览器把 Ctrl+数字 当"切换标签页"的快捷键，
+    // 不抢这一下，你按下 Ctrl+1 就会被切到第 1 个标签页。**抢不抢得赢由浏览器决定**
+    // （这个键会不会先发给网页，各浏览器不一样）；装成 PWA 时没有标签页，冲突根本
+    // 不存在，必定生效。
+    //
+    // 判据用 e.code 而不是 e.key：按住 Ctrl 时某些布局/输入法下 e.key 并不是数字。
+    // 小键盘也算（Numpad1）。越界（只有 3 条却按 Ctrl+5）**不抢键**：既然不处理，
+    // 就别把浏览器本来的行为一并吃掉。
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+      const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code)
+      const hit = digit ? results[Number(digit[1]) - 1] : undefined
+      if (hit) {
+        e.preventDefault()
+        openResult(hit.item)
+        return
+      }
+    }
     if (e.key === 'ArrowDown' && results.length) {
       e.preventDefault()
       highlighted = Math.min(highlighted + 1, results.length - 1)
@@ -182,11 +208,14 @@
       {#if results.length === 0}
         <p class="px-4 py-3 text-sm text-fg/50">站内没有匹配，回车用 {engine?.name} 搜索</p>
       {:else}
-        <ul>
+        <!-- 9 条在手机上会顶到键盘，所以列表自己滚，底部提示行固定可见 -->
+        <ul class="max-h-[50vh] overflow-y-auto">
           {#each results as r, i (r.item.id)}
             <li>
               <button
                 type="button"
+                data-testid="search-result"
+                data-link-id={r.item.id}
                 onmousedown={(e) => {
                   e.preventDefault()
                   openResult(r.item)
@@ -194,6 +223,10 @@
                 class="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left text-sm
                        {i === highlighted ? 'bg-fg/10' : ''}"
               >
+                <span
+                  class="flex size-5 shrink-0 items-center justify-center rounded-md bg-fg/10 text-[11px] text-fg/60 tabular-nums"
+                  data-testid="search-result-index">{i + 1}</span
+                >
                 <span class="min-w-0 flex-1 truncate">{r.item.title}</span>
                 <span class="shrink-0 text-xs text-fg/40">{r.item.page_name}</span>
               </button>
@@ -201,7 +234,7 @@
           {/each}
         </ul>
         <p class="border-t border-fg/10 px-4 py-2 text-xs text-fg/40">
-          回车 = 用 {engine?.name} 搜索 · Ctrl/Cmd+Enter = 打开选中项
+          回车 = 用 {engine?.name} 搜索 · Ctrl/Cmd+1…9 = 打开第 N 条 · Ctrl/Cmd+Enter = 打开选中项
         </p>
       {/if}
     </div>

@@ -123,6 +123,76 @@ try {
   check('站内模糊搜索出现结果', hitGithub > 0, `匹配元素数=${hitGithub}`)
   await page.screenshot({ path: '.e2e/shot-03-search.png' })
 
+  // 5b) Ctrl/Cmd + 数字：直接打开第 N 条站内匹配（R3）
+  const ctx = page.context()
+  const search = page.getByRole('textbox', { name: '搜索' })
+  const rows = page.locator('[data-testid="search-result"]')
+
+  const badges = await page.locator('[data-testid="search-result-index"]').allTextContents()
+  check(
+    '结果行带 1…N 序号徽标',
+    badges.length >= 2 && badges[0] === '1' && badges[1] === '2',
+    `徽标=${JSON.stringify(badges)}`,
+  )
+
+  // 行的顺序由应用自己决定，测试不猜：按 data-link-id 反查它在服务端的 url
+  const linkURLs = await page.evaluate(async () => {
+    const res = await fetch('/api/links')
+    const json = await res.json()
+    return Object.fromEntries(json.links.map((l) => [l.id, l.url]))
+  })
+
+  /** 按一次键，等新标签出现并把它的最终 URL 取回来（外部站点可能连不上，
+   *  这里只关心"打开的是哪条链接"，所以轮询到不是 about:blank 即可）。 */
+  async function openedBy(press) {
+    const [popup] = await Promise.all([ctx.waitForEvent('page'), press()])
+    for (let i = 0; i < 25 && popup.url() === 'about:blank'; i++) {
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    const url = popup.url()
+    await popup.close().catch(() => {})
+    return url
+  }
+
+  const firstId = await rows.first().getAttribute('data-link-id')
+  const secondId = await rows.nth(1).getAttribute('data-link-id')
+  const opened1 = await openedBy(() => page.keyboard.press('Control+Digit1'))
+  check(
+    'Ctrl+1 打开第 1 条匹配',
+    opened1.startsWith(linkURLs[firstId]),
+    `打开=${opened1} 期望=${linkURLs[firstId]}`,
+  )
+
+  await search.fill('git')
+  await page.waitForTimeout(300)
+  const opened2 = await openedBy(() => page.keyboard.press('Control+Digit2'))
+  check(
+    'Ctrl+2 打开第 2 条匹配',
+    opened2.startsWith(linkURLs[secondId]),
+    `打开=${opened2} 期望=${linkURLs[secondId]}`,
+  )
+
+  await search.fill('git')
+  await page.waitForTimeout(300)
+  const openedCmd = await openedBy(() => page.keyboard.press('Meta+Digit1'))
+  check(
+    'Cmd(⌘)+1 等价（iPad 外接键盘 / Mac）',
+    openedCmd.startsWith(linkURLs[firstId]),
+    `打开=${openedCmd} 期望=${linkURLs[firstId]}`,
+  )
+
+  // 越界不抢键：只有 2 条匹配时 Ctrl+9 不该打开任何东西（也不该被吃掉）
+  await search.fill('git')
+  await page.waitForTimeout(300)
+  let strayPopup = false
+  const onPage = () => (strayPopup = true)
+  ctx.on('page', onPage)
+  await page.keyboard.press('Control+Digit9')
+  await page.waitForTimeout(400)
+  ctx.off('page', onPage)
+  check('越界（Ctrl+9 无第 9 条）不打开任何东西', !strayPopup)
+  await search.fill('')
+
   // 6) 控制台无报错
   check('浏览器控制台无 error', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
 } catch (err) {

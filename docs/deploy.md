@@ -40,7 +40,7 @@ ss -tlnp | grep -E ':(8090)\b' || echo "8090 空闲"
 ## 1. 一键部署
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.2/deploy/install.sh -o /tmp/my_nav-install.sh
+curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.3/deploy/install.sh -o /tmp/my_nav-install.sh
 sudo bash /tmp/my_nav-install.sh
 ```
 
@@ -64,8 +64,8 @@ sudo IMAGE=ghcr.io/ffdkj/my_nav:edge bash /tmp/my_nav-install.sh   # 用最新�
 ```bash
 sudo mkdir -p /opt/1panel/docker/compose/my_nav/data
 cd /opt/1panel/docker/compose/my_nav
-sudo curl -fsSLO https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.2/deploy/compose.yaml
-sudo curl -fsSL  https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.2/deploy/.env.example -o .env
+sudo curl -fsSLO https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.3/deploy/compose.yaml
+sudo curl -fsSL  https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.3/deploy/.env.example -o .env
 sudo sed -i 's/^NAV_BIND_IP=.*/NAV_BIND_IP=100.70.0.29/' .env
 sudo docker compose up -d    # 或 sudo docker-compose up -d
 ```
@@ -106,11 +106,11 @@ docker ps --filter name=my_nav --format '{{.Status}}\t{{.Ports}}'
 
 ```bash
 # 0) 先等镜像构建完（不必登 ghcr、不必装 docker；tag 缺省从 deploy/compose.yaml 读）
-deploy/wait-image.sh 0.2.2     # READY 之后再去主机上拉，否则会拉到 MANIFEST_UNKNOWN
+deploy/wait-image.sh 0.2.3     # READY 之后再去主机上拉，否则会拉到 MANIFEST_UNKNOWN
 
 cd /opt/1panel/docker/compose/my_nav
 # 注意：这台主机上这个 1Panel compose 项目的文件名是 docker-compose.yml（仓库里叫 compose.yaml）
-sudo sed -i 's|^    image: .*|    image: ghcr.io/ffdkj/my_nav:0.2.2' docker-compose.yml
+sudo sed -i 's|^    image: .*|    image: ghcr.io/ffdkj/my_nav:0.2.3' docker-compose.yml
 sudo docker compose pull && sudo docker compose up -d
 ```
 
@@ -217,7 +217,7 @@ sudo NETWORK=host bash /tmp/my_nav-install.sh
 
 | 症状 | 原因 / 处理 |
 |---|---|
-| `manifest unknown` | 镜像标签写错。可用标签：`0.2.2`、`latest`、`edge`（`edge` 跟 main 分支） |
+| `manifest unknown` | 镜像标签写错。可用标签：`0.2.3`、`latest`、`edge`（`edge` 跟 main 分支） |
 | 容器一直 `starting` | 看 `docker logs my_nav`；多半是 `/data` 权限（镜像以 uid 65532 运行，宿主目录需要可写） |
 | 页面能开但没有图标 | **先看第 6.5 节**：多半是容器没有出网，用 `NETWORK=host` 重装即可。临时也可上传本地图标 |
 | 端口占用 | `sudo NAV_PORT=8091 bash install.sh` |

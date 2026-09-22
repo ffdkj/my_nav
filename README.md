@@ -5,8 +5,10 @@
 
 - **规格书**：[`docs/spec.md`](docs/spec.md)（数据模型 / API 契约 / 交互状态机 / 里程碑 / 验收清单）
 
-近期能力（0.2.2）：
+近期能力（0.2.3）：
 
+- **首尾相连翻页**：末页继续向后 = 首页、首页继续向前 = 末页；横滑 / 滚轮 / 拖到屏幕边缘三条入口一起成环，环上那一跳的动画方向跟手势（否则会露馅成一记回跳）
+- **搜索结果的 `Ctrl/Cmd+1…9`**：下拉展开时按数字键直接打开第 N 条站内匹配（行首有序号徽标），抢在浏览器"Ctrl+数字切标签页"之前；装成 PWA 时没有标签页，必定生效
 - **白天/黑夜**真正生效：语义色板 + 照片上按主题切玻璃/蒙版（浅色**不压白蒙版**，改由白色玻璃保证可读）
 - **每页壁纸**（跟随全局 / 本页单独指定）写在 `pages` 行上，刷新不回退
 - **换页平移**：图标层推入推出、壁纸仅在换了壁纸时同向平移、搜索栏与设置纹丝不动（300ms，动画期关掉玻璃模糊防掉帧）
@@ -15,6 +17,7 @@
 - **大夹空白处 = 预览模态**：2×2 夹内图标照旧直接跳转，点空白处打开与小夹同一个预览面板；面板里每个图标都能 ✎ 改图标（复用普通图块的编辑对话框，含候选卡片），改完面板不关
 - **触屏修正**：iPad 上点一次图标不再弹出两个相同页面（`svelte-dnd-action` 会在 `touchend` 补发一次 click，而它"原生 click 已被拦掉"的假定在配了 `delayTouchStart` 时不成立）；手机横滑翻页恢复可用（起手不再排除图块、判定改为「与水平夹角 ≤30°」、`touch-action` 收成 `pan-y` 把横向留给 JS）
 - **技术调研**：[`docs/research/`](docs/research/)（四条链路的实测结论与版本来源）
+- ⚠️ **已知限制**：图块指向 DSH 那种"URL 里带 token"的地址时，点开会 401、地址栏里 token 消失 —— 那是 DSH 的 `SameSite=Strict` 会话 cookie 在跨站点导航上被浏览器扣下（my_nav 全程原样存、原样打开，没有截断）。绕法：点完按一下刷新，或用书签进。完整证据与两条真修路径见 [`docs/spec.md` §11.4](docs/spec.md)
 
 ## 技术栈
 
@@ -58,7 +61,7 @@ make build      # 前端产物 → internal/web/dist → go:embed → bin/nav
 备份恢复、故障排查）。最短路径：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.2/deploy/install.sh -o /tmp/my_nav-install.sh
+curl -fsSL https://raw.githubusercontent.com/ffdkj/my_nav/v0.2.3/deploy/install.sh -o /tmp/my_nav-install.sh
 sudo bash /tmp/my_nav-install.sh
 ```
 
@@ -81,7 +84,7 @@ sudo bash /tmp/my_nav-install.sh
 
 | 标签 | 含义 |
 |---|---|
-| `0.2.2` | 固定版本（compose 默认用这个） |
+| `0.2.3` | 固定版本（compose 默认用这个） |
 | `latest` | 最新发布版 |
 | `edge` | main 分支最新构建 |
 

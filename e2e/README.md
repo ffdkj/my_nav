@@ -13,8 +13,8 @@ make e2e          # = ./e2e/run.sh
 
 `node debug-drag.mjs` 是拖拽诊断脚本（逐步打印 DOM 顺序、元素 transform、以及是否发出 PUT）。
 
-用例：`smoke.mjs`（基础交互与排序）、`folders.mjs`（合并/小夹/大夹/大夹空白处开预览模态/夹内改图标）、
-`pages.mjs`（多页与跨页拖拽）、
+用例：`smoke.mjs`（基础交互与排序、搜索下拉的 `Ctrl/Cmd+1…9` 与序号徽标）、`folders.mjs`（合并/小夹/大夹/大夹空白处开预览模态/夹内改图标）、
+`pages.mjs`（多页、跨页拖拽、**首尾相连翻页**：首页向右滑 / 末页向左滑 / 第一页往回滚 / 末页拖到左边缘各一条）、
 `icons.mjs`（图标抓取/候选/纯色/上传/重置/撑满与悬停文字）、`settings.mjs`（设置面板与图块形状）、
 `transfer.mjs`（导入导出）、`pwa.mjs`、`appearance.mjs`（白天/黑夜主题、每页壁纸、蒙版与玻璃、换页平移）、
 `touch.mjs`（**触屏专属**：触屏点击只算一次、横滑角度判定与起手位置）。
@@ -30,6 +30,7 @@ NAV_BASE=http://127.0.0.1:18100 node e2e/pages.mjs   # 需先自行起一个后�
 `delayTouchStart` 那条分支，等于没测（见下面第 10 条坑）。
 
 `node debug-drag.mjs` / `node debug-slide.mjs` 是诊断脚本（拖拽 / 换页动画）。
+`node samesite-probe.mjs` 不是应用用例，是 **cookie SameSite 行为的证据脚本**（结论见 `docs/spec.md` §11.4、坑 11）。
 
 ### 部署后体检（只读）
 
@@ -138,4 +139,14 @@ NAV_BASE=http://100.70.0.29:8090 node e2e/live-check.mjs
     另外：**索引页面的产物是编进 Go 二进制的**，改完 `web/` 只跑 `npm run build`
     而后端还是旧 `bin/nav` 时，浏览器拿到的仍是旧 CSS/JS ——
     改动像是"没生效"。必须 `go build` 重编（`run.sh` 会一起做）。
+
+11. **curl 验证不了 cookie 的 SameSite 行为，别拿它下结论。**
+    `curl -c/-b` 的 cookie jar **完全不实现 SameSite**：同一个"跨站点点进去"的场景，
+    curl 永远给你 200，浏览器却会因为 `SameSite=Strict` 把 cookie 扣下而 401。
+    这类问题只能用真浏览器验（本仓库证据脚本：`e2e/samesite-probe.mjs`，
+    六个场景 + `SAMESITE=Strict|Lax` 可切，跑法见文件头注释）。
+    配套的两个事实：① `http://127.0.0.1` 与 `http://localhost` 是**不同的 site**
+    （IP 与主机名各自成 site，端口不参与判定），要造"跨 site"就得换主机名；
+    ② **同 site 跨 origin**（`a.example.com` → `b.example.com`）Strict cookie 照发 ——
+    所以"把服务挂到同一个 registrable domain 上"是这类问题的部署级解法。
 

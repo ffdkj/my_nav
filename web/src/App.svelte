@@ -114,10 +114,14 @@
 
   // ---------- 翻页 ----------
 
+  /**
+   * 翻一页。`dir` 既是"往哪边翻"也是动画方向 —— 首尾相连之后
+   * 末页继续往后会绕回首页，这一跳必须仍按手势方向演（见 board.selectPage）。
+   */
   function flip(dir: -1 | 1): boolean {
     const p = board.adjacentPage(dir)
     if (!p) return false
-    void board.selectPage(p.id)
+    void board.selectPage(p.id, dir)
     return true
   }
 
@@ -184,14 +188,13 @@
     flip(dx < 0 ? 1 : -1)
   }
 
-  // 拖拽到屏幕左右边缘 → 翻页并进入跨页 carry
+  // 拖拽到屏幕左右边缘 → 翻页并进入跨页 carry。
+  // 首尾相连之后两端不再是尽头（末页往右拖会绕回首页），所以这里没有"已经到头了"
+  // 那类提示分支，只剩"只有一页"这一种动不了的情况（由 adjacentPage 返回 undefined 表达）。
   function handleEdge(dir: -1 | 1, itemId: string) {
     const p = board.adjacentPage(dir)
-    if (!p) {
-      ui.info(dir === 1 ? '已经是最后一页' : '已经是第一页')
-      return
-    }
-    board.beginCarry(itemId, p.id)
+    if (!p) return
+    board.beginCarry(itemId, p.id, dir)
   }
 
   // ---------- 图标操作 ----------
