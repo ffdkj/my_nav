@@ -117,6 +117,16 @@ sudo docker compose pull && sudo docker compose up -d
 在 1Panel 面板里改也行：容器 → 编排 → my_nav → 编辑，把 `image:` 的 tag 换掉后保存，
 面板会自己 `up -d` 重建容器（实测约 3 秒）。
 
+⚠️ **走 MCP / 面板 API 时的坑（两次实测，方向相反，别记混）**：
+
+- **只改文件 + `start_compose` 不会重建容器。** `start_compose` 的语义是"启动既有容器"：
+  实测改完 tag 调它返回 200，但容器 `Created` 还是上一次部署的时间，页面照旧服务旧包
+  （轮询 10 分钟都没换）。换 tag 一定要走 `update_compose`（= 面板 UI 的"保存"）。
+- **`update_compose` 可能在客户端侧超时，但服务端往往已经做完了。**
+  曾挂过 25 分钟没返回，事后发现文件已写、`up -d` 也跑了；另一次 80 秒就正常返回。
+  所以超时后**先别急着重试**，直接
+  `curl -s http://<host>:8090/ | grep -o 'assets/index-[^"]*\.js'` 看包换没换，再决定补不补。
+
 回滚就是把 `image:` 改回旧版本号再 `up -d`。
 **数据库 schema 变更只在启动时向前迁移**，所以回滚到旧镜像前请先按第 4 节导出一份。
 
